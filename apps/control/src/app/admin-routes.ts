@@ -387,9 +387,13 @@ export async function handleAdminRoute(
 		} catch {
 			return jsonResponse({ error: "Invalid JSON body." }, { status: 400 });
 		}
-		if (body.kind !== "email" && body.kind !== "domain") {
+		if (
+			body.kind !== "username" &&
+			body.kind !== "email" &&
+			body.kind !== "domain"
+		) {
 			return jsonResponse(
-				{ error: "kind must be 'email' or 'domain'." },
+				{ error: "kind must be 'username', 'email', or 'domain'." },
 				{ status: 400 },
 			);
 		}
@@ -413,9 +417,17 @@ export async function handleAdminRoute(
 		);
 		const value = decodeURIComponent(allowlistDeleteMatch[1] ?? "");
 		const current = getAllowlist();
-		const kind = current.emails.includes(value.toLowerCase())
-			? "email"
-			: "domain";
+		const requestedKind = url.searchParams.get("kind");
+		const kind =
+			requestedKind === "username" ||
+			requestedKind === "email" ||
+			requestedKind === "domain"
+				? requestedKind
+				: current.emails.includes(value.toLowerCase())
+					? "email"
+					: current.usernames.includes(value.toLowerCase())
+						? "username"
+						: "domain";
 		await removeAllowlistEntry(kind, value);
 		recordAuditEvent(storage, {
 			actor: auditActor(adminResult),

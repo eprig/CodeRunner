@@ -32,8 +32,9 @@ filesystem bridge makes the bind-mounted student workspaces noticeably slower.
 
 :::
 
-Before continuing, register at least one GitHub or Google OAuth app as described
-in [OAuth Credentials](./oauth-credentials.md).
+Before continuing, choose at least one sign-in method: register a GitHub or
+Google OAuth app as described in [OAuth Credentials](./oauth-credentials.md),
+or enable the optional username/password sign-in (`CODERUNNER_USERNAME_PASSWORD=true`).
 
 ## 1. Clone and configure
 
@@ -57,6 +58,9 @@ GITHUB_CLIENT_ID=<your-github-client-id>
 GITHUB_CLIENT_SECRET=<your-github-client-secret>
 # GOOGLE_CLIENT_ID=<your-google-client-id>
 # GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+#
+# OR enable username/password sign-in instead of (or alongside) OAuth:
+# CODERUNNER_USERNAME_PASSWORD=true
 
 # Comma-separated coach/admin emails.
 CODERUNNER_ADMIN_EMAIL=you@yourteam.org

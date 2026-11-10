@@ -328,8 +328,8 @@ gcloud compute ssh coderunner --zone=us-central1-a --tunnel-through-iap \
 ```
 
 **B. Non-secret defaults in the template** (`LOG_LEVEL`, `CODE_MEMORY_LIMIT`,
-`IDLE_STOP_MINUTES`, etc.): edit the relevant `echo` line in the `render-env.sh`
-block inside
+`CODERUNNER_USERNAME_PASSWORD`, `IDLE_STOP_MINUTES`, etc.): edit the relevant
+`echo` line in the `render-env.sh` block inside
 [`deploy/cloud-init/user-data.yaml`](https://github.com/mathewdunne/CodeRunner/blob/main/deploy/cloud-init/user-data.yaml),
 commit, then on the VM:
 

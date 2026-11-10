@@ -5,15 +5,18 @@ title: OAuth Credentials
 
 # OAuth Credentials
 
-CodeRunner does not store passwords. Sign-in is handled by
-[Better Auth](https://www.better-auth.com/) using GitHub, Google, and/or
-Auth0 as OAuth providers. **At least one provider must be configured** for any
-non-demo deployment; without one, the login page has no working sign-in button.
+Sign-in is handled by [Better Auth](https://www.better-auth.com/) using
+GitHub, Google, and/or Auth0 as OAuth providers, plus an optional
+username/password method. **At least one sign-in method must be configured** for
+any non-demo deployment; without one, the login page has no working sign-in
+button.
 
 Configure as many as you like; each configured provider gets its own button.
 Auth0 is for teams that already manage their members in an Auth0 tenant: Auth0
 users skip the allowlist and get their CodeRunner role from Auth0 (see
-[Set up Auth0](#set-up-auth0)).
+[Set up Auth0](#set-up-auth0)). Username/password is disabled by default and
+enabled with `CODERUNNER_USERNAME_PASSWORD` (see
+[Username and password sign-in](#username-and-password-sign-in)).
 
 This page covers registering the OAuth apps and wiring the resulting
 credentials into CodeRunner. The values you produce here are used the same way
@@ -112,9 +115,47 @@ In the Auth0 dashboard:
    roles to your members. (Permissions can also be given to a user directly
    under **User Management → Users → Permissions**.)
 
-Then set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, and
-`AUTH0_AUDIENCE` (below). The login page shows **Sign in with Auth0** once all
-four are set.
+Then set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET` and `AUTH0_AUDIENCE` (below).
+The login page shows **Sign in with Auth0** once all three are set.
+
+## Username and password sign-in
+
+Email/password is an alternative to OAuth for deployments where per-student
+OAuth accounts are impractical (for example, a shared lab where students do
+not have GitHub or Google accounts). It is **off by default**. Set:
+
+```bash
+CODERUNNER_USERNAME_PASSWORD=true
+```
+
+Restart the control plane. The login page then shows a username/password form
+with a **Create one** link for self-service sign-up. Students create an account
+with a username and a password of at least 8 characters.
+
+Sign-up and sign-in are still gated by the same allowlist as OAuth. Add each
+student's username before they register:
+
+```bash
+docker compose exec control coderunner allowlist add username student
+```
+
+If the allowlist is empty, nobody can create an account; the control plane logs
+a warning at startup in that case.
+
+Passwords are hashed by Better Auth with **scrypt** — a random salt plus a
+64-byte derived key — and only the hash is written to the SQLite `account`
+table. Plaintext passwords are never stored or logged. The admin panel and CLI
+never display password hashes.
+
+:::caution[No email verification]
+
+CodeRunner does not send email, and username/password accounts do not have a
+verified email identity. Prefer OAuth/Auth0 when identity assurance matters. To
+revoke an account, remove the username from the allowlist; their next sign-in is denied
+and the just-created session is revoked. To also erase their workspace and
+data, use the admin panel's user deletion.
+
+:::
 
 ## Wire the credentials into CodeRunner
 
@@ -135,9 +176,12 @@ CodeRunner reads these from environment variables (see
 | `AUTH0_AUDIENCE` | Identifier of the Auth0 API that holds CodeRunner's permissions |
 | `AUTH0_USER_PERMISSION` | API permission that signs in as a student (default `coderunner:user`) |
 | `AUTH0_ADMIN_PERMISSION` | API permission that signs in as an admin (default `coderunner:admin`) |
+| `CODERUNNER_USERNAME_PASSWORD` | When `true`, enables username/password sign-in and self-service sign-up. Off by default. |
 
-A provider only appears on the login page when **both** its ID and secret are
-set (for Auth0, the domain and audience too). Where these values live depends on the deployment:
+An OAuth provider only appears on the login page when **both** its ID and
+secret are set (for Auth0, the domain and audience too). The username/password form appears when
+`CODERUNNER_USERNAME_PASSWORD` is enabled. Where these values live depends on the
+deployment:
 
 - **Local:** in your `.env` file. See [Local Deployment](./local.md).
 - **Cloud VM:** in Google Secret Manager, materialized into the VM's `.env` by

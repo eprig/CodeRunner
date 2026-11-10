@@ -12,6 +12,7 @@ import type {
 import { recordAuditEvent } from "./audit";
 import {
 	addAllowlistEntry,
+	getAllowlist,
 	loadAllowlist,
 	setAllowlistPath,
 } from "./auth/allowlist";
@@ -161,6 +162,28 @@ export class AppStorage {
 			},
 			audit: (event) => recordAuditEvent(this, event),
 		});
+		if (!this.config.demo && this.config.usernamePasswordAuth) {
+			// SQLite cannot ALTER TABLE ADD COLUMN with an inline UNIQUE
+			// constraint. Better Auth's username plugin generates exactly that
+			// migration, so create the nullable column and equivalent partial
+			// unique index first. Existing OAuth users remain valid with NULL.
+			const userTable = this.db
+				.query(
+					"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user'",
+				)
+				.get();
+			if (userTable) {
+				const userColumns = this.db
+					.query("PRAGMA table_info(user)")
+					.all() as Array<{ name: string }>;
+				if (!userColumns.some((column) => column.name === "username")) {
+					this.db.exec('ALTER TABLE "user" ADD COLUMN "username" TEXT');
+				}
+				this.db.exec(
+					'CREATE UNIQUE INDEX IF NOT EXISTS "user_username_uidx" ON "user" ("username") WHERE "username" IS NOT NULL',
+				);
+			}
+		}
 		const { getMigrations } = await import("better-auth/db/migration");
 		const { runMigrations } = await getMigrations(this.auth.options);
 		await runMigrations();
@@ -176,7 +199,7 @@ export class AppStorage {
 		// was set. New accounts get the admin role via the user.create hook.
 		await this.seedBootstrapAdmins();
 
-		// 6. Warn if no auth providers are configured (skipped in demo mode).
+		// 6. Warn if no auth methods are configured (skipped in demo mode).
 		if (!this.config.demo) {
 			const hasGitHub = Boolean(
 				this.config.githubClientId && this.config.githubClientSecret,
@@ -195,17 +218,30 @@ export class AppStorage {
 					hint: "Set AUTH0_AUDIENCE to the identifier of the Auth0 API that holds CodeRunner's permissions",
 				});
 			}
-			if (!hasGitHub && !hasGoogle && !hasAuth0) {
-				log.warn("no OAuth providers configured — login will not work", {
+			const hasUsernamePassword = this.config.usernamePasswordAuth;
+			if (!hasGitHub && !hasGoogle && !hasAuth0 && !hasUsernamePassword) {
+				log.warn("no sign-in methods configured — login will not work", {
 					baseUrl: this.config.baseUrl,
-					hint: "Set GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET, or AUTH0_DOMAIN/CLIENT_ID/CLIENT_SECRET/AUDIENCE in your .env",
+					hint: "Set CODERUNNER_USERNAME_PASSWORD=true, or GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET, or AUTH0_DOMAIN/CLIENT_ID/CLIENT_SECRET/AUDIENCE in your .env",
 				});
 			} else {
-				log.debug("oauth providers configured", {
+				log.debug("sign-in methods configured", {
+					usernamePassword: hasUsernamePassword,
 					github: hasGitHub,
 					google: hasGoogle,
 					auth0: hasAuth0,
 				});
+			}
+			if (hasUsernamePassword) {
+				const allowlist = getAllowlist();
+				if (allowlist.usernames.length === 0) {
+					log.warn(
+						"username/password auth is enabled but no usernames are allowlisted — no one can create a username account",
+					);
+				}
+				log.warn(
+					"username/password auth is enabled: usernames are not verified identities (no email or SMTP). Use it on trusted networks, or prefer OAuth/Auth0 for stronger identity guarantees.",
+				);
 			}
 		}
 	}
@@ -215,11 +251,12 @@ export class AppStorage {
 	}
 
 	/**
-	 * Seed the accounts named in CODERUNNER_ADMIN_EMAIL so a fresh deployment
-	 * needs zero exec steps: each email is added to the allowlist (idempotent),
-	 * and any existing non-admin account with that email is promoted (except
-	 * Auth0 users, whose role comes from Auth0 at sign-in). Accounts
-	 * that have not signed in yet get the admin role from the user.create hook.
+	 * Seed the accounts named in CODERUNNER_ADMIN_EMAIL and
+	 * CODERUNNER_ADMIN_USERNAME so a fresh deployment needs zero exec steps:
+	 * each identity is added to the allowlist (idempotent), and any existing
+	 * non-admin account is promoted (except Auth0 users, whose role comes from
+	 * Auth0 at sign-in). Accounts that have not signed in yet get the admin
+	 * role from the user.create hook.
 	 */
 	private async seedBootstrapAdmins(): Promise<void> {
 		for (const email of this.config.adminEmails) {
@@ -230,8 +267,7 @@ export class AppStorage {
 			// case the OAuth provider returned, so match case-insensitively.
 			// Rows with an Auth0 account are skipped: Auth0 sets the role at every
 			// sign-in and only makes an admin email admin once it is verified,
-			// while a row here may hold an unverified Auth0 self-sign-up (and any
-			// GitHub/Google identity later linked onto it).
+			// while a row here may hold an unverified Auth0 self-sign-up.
 			const user = this.db
 				.query(
 					"SELECT id, role FROM user WHERE lower(email) = ? AND NOT EXISTS (SELECT 1 FROM account WHERE account.userId = user.id AND account.providerId = 'auth0')",
@@ -242,6 +278,24 @@ export class AppStorage {
 					.query("UPDATE user SET role = ?, updatedAt = ? WHERE id = ?")
 					.run("admin", nowIso(), user.id);
 				log.info("bootstrap admin promoted", { email });
+			}
+		}
+
+		// The username plugin only creates the `username` column when username
+		// auth is enabled, so only touch it in that mode.
+		if (this.config.demo || !this.config.usernamePasswordAuth) return;
+		for (const username of this.config.adminUsernames) {
+			await addAllowlistEntry("username", username);
+			log.info("bootstrap admin allowlisted", { username });
+
+			const user = this.db
+				.query("SELECT id, role FROM user WHERE lower(username) = ?")
+				.get(username) as { id: string; role: string | null } | null;
+			if (user && user.role !== "admin") {
+				this.db
+					.query("UPDATE user SET role = ?, updatedAt = ? WHERE id = ?")
+					.run("admin", nowIso(), user.id);
+				log.info("bootstrap admin promoted", { username });
 			}
 		}
 	}

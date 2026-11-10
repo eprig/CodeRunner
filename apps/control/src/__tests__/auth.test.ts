@@ -7,6 +7,7 @@ import {
 	addAllowlistEntry,
 	isEmailAllowed,
 	loadAllowlist,
+	removeAllowlistEntry,
 	setAllowlistPath,
 } from "../auth/allowlist";
 import {
@@ -413,9 +414,13 @@ describe("auth provider discovery", () => {
 					new Request("http://localhost/api/auth/providers"),
 				);
 				expect(response.status).toBe(200);
-				expect(await response.json()).toEqual({ providers: ["github"] });
+				expect(await response.json()).toEqual({
+					providers: ["github"],
+					usernamePassword: false,
+				});
 			},
 			{
+				usernamePasswordAuth: false,
 				githubClientId: "github-client-id",
 				githubClientSecret: "github-client-secret",
 				googleClientId: "",
@@ -429,12 +434,13 @@ describe("auth provider discovery", () => {
 
 	test("lists auth0 only when its domain, client ID, secret, and audience are all set", async () => {
 		const others = {
+			usernamePasswordAuth: false,
 			githubClientId: "",
 			githubClientSecret: "",
 			googleClientId: "",
 			googleClientSecret: "",
 		};
-		const providersFor = (options: Record<string, string>) =>
+		const providersFor = (options: Parameters<typeof withApp>[1]) =>
 			withApp(async (app) => {
 				const response = await app.fetch(
 					new Request("http://localhost/api/auth/providers"),
@@ -471,16 +477,20 @@ describe("auth provider discovery", () => {
 		).toEqual([]);
 	});
 
-	test("returns an empty list when no OAuth providers are configured", async () => {
+	test("returns an empty list when no sign-in methods are configured", async () => {
 		await withApp(
 			async (app) => {
 				const response = await app.fetch(
 					new Request("http://localhost/api/auth/providers"),
 				);
 				expect(response.status).toBe(200);
-				expect(await response.json()).toEqual({ providers: [] });
+				expect(await response.json()).toEqual({
+					providers: [],
+					usernamePassword: false,
+				});
 			},
 			{
+				usernamePasswordAuth: false,
 				githubClientId: "",
 				githubClientSecret: "",
 				googleClientId: "",
@@ -489,6 +499,194 @@ describe("auth provider discovery", () => {
 				auth0ClientId: "",
 				auth0ClientSecret: "",
 			},
+		);
+	});
+
+	test("reports username/password sign-in when it is enabled", async () => {
+		await withApp(
+			async (app) => {
+				const response = await app.fetch(
+					new Request("http://localhost/api/auth/providers"),
+				);
+				expect(await response.json()).toEqual({
+					providers: [],
+					usernamePassword: true,
+				});
+			},
+			{
+				usernamePasswordAuth: true,
+				githubClientId: "",
+				githubClientSecret: "",
+				googleClientId: "",
+				googleClientSecret: "",
+				auth0Domain: "",
+				auth0ClientId: "",
+				auth0ClientSecret: "",
+			},
+		);
+	});
+});
+
+function authRequest(path: string, body: unknown, cookie?: string): Request {
+	const headers = new Headers();
+	headers.set("content-type", "application/json");
+	headers.set("origin", "http://localhost:4000");
+	if (cookie) {
+		headers.set("cookie", cookie);
+	}
+	return new Request(`http://localhost${path}`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify(body),
+	});
+}
+
+describe("username/password authentication", () => {
+	const PASSWORD = "correct horse battery staple";
+
+	test("is off unless CODERUNNER_USERNAME_PASSWORD is enabled", async () => {
+		await withApp(
+			async (app) => {
+				await addAllowlistEntry("username", "student");
+				const response = await app.fetch(
+					authRequest("/api/auth/sign-up/email", {
+						name: "Student",
+						username: "student",
+						email: "student@students.coderunner.invalid",
+						password: PASSWORD,
+					}),
+				);
+				expect(response.ok).toBe(false);
+				const users = app.storage.db
+					.query("SELECT COUNT(*) AS count FROM user")
+					.get() as { count: number };
+				expect(users.count).toBe(0);
+			},
+			{ usernamePasswordAuth: false },
+		);
+	});
+
+	test("sign-up creates a user, workspace, and a scrypt password hash (never plaintext)", async () => {
+		const { verifyPassword } = await import("better-auth/crypto");
+		await withApp(
+			async (app) => {
+				await addAllowlistEntry("username", "student");
+				const response = await app.fetch(
+					authRequest("/api/auth/sign-up/email", {
+						name: "Student",
+						username: "student",
+						email: "attacker@example.com",
+						password: PASSWORD,
+					}),
+				);
+				expect(response.status).toBe(200);
+				expect(response.headers.get("set-cookie")).toContain(
+					"coderunner_session=",
+				);
+
+				const user = app.storage.db
+					.query(
+						"SELECT id, email, username, role, slug FROM user WHERE username = ?",
+					)
+					.get("student") as {
+					id: string;
+					email: string;
+					username: string;
+					role: string;
+					slug: string;
+				};
+				expect(user.email).toBe("student@students.coderunner.invalid");
+				expect(user.username).toBe("student");
+				expect(user.role).toBe("student");
+				expect(user.slug).toBe("student");
+
+				const workspace = app.storage.db
+					.query("SELECT slug FROM workspaces WHERE user_id = ?")
+					.get(user.id) as { slug: string } | null;
+				expect(workspace?.slug).toBe("student");
+
+				const account = app.storage.db
+					.query("SELECT providerId, password FROM account WHERE userId = ?")
+					.get(user.id) as { providerId: string; password: string };
+				expect(account.providerId).toBe("credential");
+
+				// `<16-byte hex salt>:<64-byte hex key>`, with no plaintext copy.
+				expect(account.password).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/u);
+				expect(account.password).not.toContain(PASSWORD);
+				expect(
+					await verifyPassword({ hash: account.password, password: PASSWORD }),
+				).toBe(true);
+				expect(
+					await verifyPassword({ hash: account.password, password: "wrong" }),
+				).toBe(false);
+			},
+			{
+				usernamePasswordAuth: true,
+				githubClientId: "",
+				githubClientSecret: "",
+				googleClientId: "",
+				googleClientSecret: "",
+				auth0Domain: "",
+				auth0ClientId: "",
+				auth0ClientSecret: "",
+			},
+		);
+	});
+
+	test("rejects sign-up for a username that is not on the allowlist", async () => {
+		await withApp(
+			async (app) => {
+				const response = await app.fetch(
+					authRequest("/api/auth/sign-up/email", {
+						name: "Stranger",
+						username: "stranger",
+						email: "stranger@students.coderunner.invalid",
+						password: PASSWORD,
+					}),
+				);
+				expect(response.status).toBe(403);
+				const users = app.storage.db
+					.query("SELECT COUNT(*) AS count FROM user")
+					.get() as { count: number };
+				expect(users.count).toBe(0);
+			},
+			{ usernamePasswordAuth: true },
+		);
+	});
+
+	test("a removed allowlist entry blocks sign-in and revokes the new session", async () => {
+		await withApp(
+			async (app) => {
+				await addAllowlistEntry("username", "student");
+				const signUp = await app.fetch(
+					authRequest("/api/auth/sign-up/email", {
+						name: "Student",
+						username: "student",
+						email: "student@students.coderunner.invalid",
+						password: PASSWORD,
+					}),
+				);
+				expect(signUp.status).toBe(200);
+
+				// Drop the auto sign-in session so the only session we observe is
+				// the one the sign-in attempt below creates (then revokes).
+				app.storage.db.exec("DELETE FROM session");
+				await removeAllowlistEntry("username", "student");
+
+				const signIn = await app.fetch(
+					authRequest("/api/auth/sign-in/username", {
+						username: "student",
+						password: PASSWORD,
+					}),
+				);
+				expect(signIn.status).toBe(403);
+
+				const sessions = app.storage.db
+					.query("SELECT COUNT(*) AS count FROM session")
+					.get() as { count: number };
+				expect(sessions.count).toBe(0);
+			},
+			{ usernamePasswordAuth: true },
 		);
 	});
 });

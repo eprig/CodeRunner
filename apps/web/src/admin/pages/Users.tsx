@@ -14,6 +14,10 @@ type UserRow = {
 	lastSeenAt: string | null;
 };
 
+function displayEmail(email: string): string {
+	return email.endsWith("@students.coderunner.invalid") ? "—" : email;
+}
+
 async function fetchUsers(): Promise<UserRow[]> {
 	const res = await fetch("/admin/users", { credentials: "same-origin" });
 	if (!res.ok) throw new Error(`${res.status}`);
@@ -47,7 +51,7 @@ export function Users() {
 	async function removeUser(user: UserRow) {
 		if (
 			!confirm(
-				`Delete ${user.email} and their workspace? This cannot be undone.`,
+				`Delete ${user.name} and their workspace? This cannot be undone.`,
 			)
 		)
 			return;
@@ -79,8 +83,8 @@ export function Users() {
 						<table className="w-full text-sm">
 							<thead>
 								<tr className="border-b text-left text-muted-foreground">
-									<th className="pb-2">Email</th>
 									<th className="pb-2">Name</th>
+									<th className="pb-2">Email</th>
 									<th className="pb-2">Role</th>
 									<th className="pb-2">Slug</th>
 									<th className="pb-2">Last seen</th>
@@ -90,8 +94,8 @@ export function Users() {
 							<tbody>
 								{users.map((u) => (
 									<tr key={u.id} className="border-b last:border-0">
-										<td className="py-2">{u.email}</td>
 										<td className="py-2">{u.name}</td>
+										<td className="py-2">{displayEmail(u.email)}</td>
 										<td className="py-2">
 											<span
 												className={`inline-block rounded px-2 py-0.5 text-xs ${

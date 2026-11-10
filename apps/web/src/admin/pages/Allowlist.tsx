@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAdminPoll } from "../hooks/useAdminPoll";
 
+type AllowlistKind = "username" | "email" | "domain";
+
 type AllowlistData = {
+	usernames: string[];
 	emails: string[];
 	domains: string[];
 };
@@ -20,7 +23,7 @@ export function Allowlist() {
 		10000,
 	);
 	const [newValue, setNewValue] = useState("");
-	const [newKind, setNewKind] = useState<"email" | "domain">("email");
+	const [newKind, setNewKind] = useState<AllowlistKind>("email");
 	const [busy, setBusy] = useState(false);
 	const [reloadError, setReloadError] = useState<string | null>(null);
 
@@ -41,13 +44,16 @@ export function Allowlist() {
 		}
 	}
 
-	async function removeEntry(value: string) {
+	async function removeEntry(value: string, kind: AllowlistKind) {
 		setBusy(true);
 		try {
-			await fetch(`/admin/allowlist/${encodeURIComponent(value)}`, {
-				method: "DELETE",
-				credentials: "same-origin",
-			});
+			await fetch(
+				`/admin/allowlist/${encodeURIComponent(value)}?kind=${kind}`,
+				{
+					method: "DELETE",
+					credentials: "same-origin",
+				},
+			);
 			refetch();
 		} finally {
 			setBusy(false);
@@ -83,7 +89,10 @@ export function Allowlist() {
 	if (error) return <p className="text-destructive p-4">Error: {error}</p>;
 
 	const isEmpty =
-		!data || (data.emails.length === 0 && data.domains.length === 0);
+		!data ||
+		(data.usernames.length === 0 &&
+			data.emails.length === 0 &&
+			data.domains.length === 0);
 
 	return (
 		<div className="space-y-6">
@@ -102,8 +111,8 @@ export function Allowlist() {
 
 			{isEmpty && (
 				<p className="text-muted-foreground text-sm">
-					Allowlist is empty — OAuth sign-in is blocked until an email or domain
-					is added.
+					Allowlist is empty — sign-in is blocked until a username, email, or
+					domain is added.
 				</p>
 			)}
 
@@ -115,9 +124,10 @@ export function Allowlist() {
 					<div className="flex gap-2">
 						<select
 							value={newKind}
-							onChange={(e) => setNewKind(e.target.value as "email" | "domain")}
+							onChange={(e) => setNewKind(e.target.value as AllowlistKind)}
 							className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
 						>
+							<option value="username">Username</option>
 							<option value="email">Email</option>
 							<option value="domain">Domain</option>
 						</select>
@@ -126,7 +136,11 @@ export function Allowlist() {
 							value={newValue}
 							onChange={(e) => setNewValue(e.target.value)}
 							placeholder={
-								newKind === "email" ? "user@example.com" : "example.com"
+								newKind === "username"
+									? "alice"
+									: newKind === "email"
+										? "user@example.com"
+										: "example.com"
 							}
 							className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm"
 							onKeyDown={(e) => e.key === "Enter" && addEntry()}
@@ -141,6 +155,34 @@ export function Allowlist() {
 					</div>
 				</CardContent>
 			</Card>
+
+			{data && data.usernames.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm">Usernames</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ul className="space-y-1">
+							{data.usernames.map((username) => (
+								<li
+									key={username}
+									className="flex items-center justify-between rounded px-2 py-1 hover:bg-zinc-800"
+								>
+									<span className="font-mono text-sm">{username}</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => removeEntry(username, "username")}
+										disabled={busy}
+									>
+										Remove
+									</Button>
+								</li>
+							))}
+						</ul>
+					</CardContent>
+				</Card>
+			)}
 
 			{data && data.emails.length > 0 && (
 				<Card>
@@ -158,7 +200,7 @@ export function Allowlist() {
 									<Button
 										variant="ghost"
 										size="sm"
-										onClick={() => removeEntry(email)}
+										onClick={() => removeEntry(email, "email")}
 										disabled={busy}
 									>
 										Remove
@@ -186,7 +228,7 @@ export function Allowlist() {
 									<Button
 										variant="ghost"
 										size="sm"
-										onClick={() => removeEntry(domain)}
+										onClick={() => removeEntry(domain, "domain")}
 										disabled={busy}
 									>
 										Remove

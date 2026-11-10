@@ -29,7 +29,6 @@ describe("UserMenu", () => {
 		render(
 			<UserMenu
 				displayName="Alex D"
-				email="guest-abc@classroom.invalid"
 				avatarUrl={null}
 				isAdmin={false}
 				guest={guest}
@@ -48,7 +47,6 @@ describe("UserMenu", () => {
 		render(
 			<UserMenu
 				displayName="Alex D"
-				email="guest-abc@classroom.invalid"
 				avatarUrl={null}
 				isAdmin={false}
 				guest={guest}
@@ -93,20 +91,13 @@ describe("UserMenu", () => {
 		).toBeLessThan(assign.mock.invocationCallOrder[0] ?? 0);
 	});
 
-	test("signed-in users still see their email and Logout", async () => {
+	test("signed-in users do not see their email and still see Logout", async () => {
 		const user = userEvent.setup();
-		render(
-			<UserMenu
-				displayName="Alice"
-				email="alice@example.com"
-				avatarUrl={null}
-				isAdmin={false}
-			/>,
-		);
+		render(<UserMenu displayName="Alice" avatarUrl={null} isAdmin={false} />);
 		await user.click(screen.getByRole("button", { name: "User menu" }));
-		expect(await screen.findByText("alice@example.com")).toBeInTheDocument();
+		expect(screen.queryByText("alice@example.com")).not.toBeInTheDocument();
 		expect(
-			screen.getByRole("menuitem", { name: "Logout" }),
+			await screen.findByRole("menuitem", { name: "Logout" }),
 		).toBeInTheDocument();
 	});
 });

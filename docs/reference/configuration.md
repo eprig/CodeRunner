@@ -54,14 +54,15 @@ See [Lessons overview](../lessons/overview.md) and [Authoring modules](../lesson
 
 ## Auth and OAuth
 
-OAuth credentials are required for multi-user production deployments. At least one provider (GitHub, Google, or Auth0) must be configured for login to work. Register your OAuth app at the provider and set the callback URL to `$BETTER_AUTH_URL/api/auth/callback/github`, `$BETTER_AUTH_URL/api/auth/callback/google`, or `$BETTER_AUTH_URL/api/auth/oauth2/callback/auth0`.
+At least one sign-in method must be configured for login to work: an OAuth provider (GitHub, Google, or Auth0), username/password, or both. Register OAuth apps at the provider and set the callback URL to `$BETTER_AUTH_URL/api/auth/callback/github`, `$BETTER_AUTH_URL/api/auth/callback/google`, or `$BETTER_AUTH_URL/api/auth/oauth2/callback/auth0`. Username/password is disabled by default and enabled with `CODERUNNER_USERNAME_PASSWORD`.
 
-See [OAuth credentials](../deploying/oauth-credentials.md) for step-by-step registration instructions.
+See [OAuth credentials](../deploying/oauth-credentials.md) for step-by-step registration instructions and [Username and password sign-in](../deploying/oauth-credentials.md#username-and-password-sign-in) for the password-specific caveats.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BETTER_AUTH_SECRET` | `frc-local-dev-session-secret-change-me` | Session signing secret. **Change this for any production deployment.** Use a random 32+ character string. |
 | `BETTER_AUTH_URL` | `http://localhost:{PORT}` | Public base URL of the app. OAuth providers redirect back to this URL; it must be reachable by the browser. |
+| `CODERUNNER_USERNAME_PASSWORD` | `false` | Enable username/password sign-in and self-service sign-up. Passwords are hashed with scrypt by Better Auth; plaintext is never stored. Sign-up still requires an allowlisted username. |
 | `GITHUB_CLIENT_ID` | none | GitHub OAuth app client ID. |
 | `GITHUB_CLIENT_SECRET` | none | GitHub OAuth app client secret. |
 | `GOOGLE_CLIENT_ID` | none | Google OAuth client ID. |
@@ -74,6 +75,7 @@ See [OAuth credentials](../deploying/oauth-credentials.md) for step-by-step regi
 | `AUTH0_ADMIN_PERMISSION` | `coderunner:admin` | API permission that signs in as a CodeRunner admin. |
 | `CODERUNNER_DEMO_MODE` | `false` | When `1` or `true`, bypasses authentication entirely. All visitors share one admin session. Never expose a demo instance publicly. Also enabled with the `--demo` CLI flag on startup. |
 | `CODERUNNER_ADMIN_EMAIL` | none | Comma-separated email addresses to bootstrap as admins with zero exec steps. Each is added to the allowlist at startup and granted the admin role on first OAuth sign-in; an existing account with that email is promoted to admin at the next startup. See [OAuth credentials](../deploying/oauth-credentials.md#the-easy-path-coderunner_admin_email). |
+| `CODERUNNER_ADMIN_USERNAME` | none | Comma-separated usernames to bootstrap as admins. Each is added to the username allowlist at startup and receives the admin role on first username/password sign-in; an existing username account is promoted at startup. |
 
 ## Docker and Containers
 

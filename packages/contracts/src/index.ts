@@ -66,6 +66,8 @@ export const authProviderSchema = z.enum(["github", "google", "auth0"]);
 
 export const authProvidersResponseSchema = z.object({
 	providers: z.array(authProviderSchema),
+	/** True when Better Auth's username/password sign-in is enabled. */
+	usernamePassword: z.boolean().optional().default(false),
 });
 
 export const CLASSROOM_CODE_PATTERN = /^\d{6}$/u;

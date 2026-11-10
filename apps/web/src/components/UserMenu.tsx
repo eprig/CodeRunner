@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 interface UserMenuProps {
 	displayName: string;
-	email: string;
 	avatarUrl: string | null;
 	isAdmin: boolean;
 	layoutMenu?: ReactNode;
@@ -109,7 +108,6 @@ function navigateToAdmin() {
 
 export function UserMenu({
 	displayName,
-	email,
 	avatarUrl,
 	isAdmin,
 	layoutMenu,
@@ -140,9 +138,11 @@ export function UserMenu({
 						>
 							{displayName}
 						</div>
-						<div className="truncate text-[11.5px] text-muted-foreground">
-							{guest ? `Guest · ends ${formatEndsAt(guest.endsAt)}` : email}
-						</div>
+						{guest && (
+							<div className="truncate text-[11.5px] text-muted-foreground">
+								Guest · ends {formatEndsAt(guest.endsAt)}
+							</div>
+						)}
 					</div>
 				</div>
 				<div className="p-1">

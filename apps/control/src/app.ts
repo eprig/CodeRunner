@@ -364,6 +364,8 @@ export async function createApp(
 		if (url.pathname === "/api/auth/providers" && request.method === "GET") {
 			return jsonResponse({
 				providers: getEnabledAuthProviders(storage.config),
+				usernamePassword:
+					!storage.config.demo && storage.config.usernamePasswordAuth,
 			} satisfies AuthProvidersResponse);
 		}
 
@@ -403,7 +405,9 @@ export async function createApp(
 		}
 
 		if (
-			(url.pathname === "/login" || url.pathname === "/join") &&
+			(url.pathname === "/login" ||
+				url.pathname === "/join" ||
+				url.pathname === "/account") &&
 			request.method === "GET"
 		) {
 			return webShellResponse(storage);

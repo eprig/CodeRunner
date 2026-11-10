@@ -202,8 +202,6 @@ export function WorkspacePage() {
 		sessionState.status === "ready"
 			? sessionState.session.user.displayName
 			: "Loading";
-	const email =
-		sessionState.status === "ready" ? sessionState.session.user.email : "";
 	const avatarUrl =
 		sessionState.status === "ready"
 			? sessionState.session.user.avatarUrl
@@ -243,7 +241,6 @@ export function WorkspacePage() {
 			{isDemo && <DemoBanner />}
 			<Topbar
 				displayName={displayName}
-				email={email}
 				avatarUrl={avatarUrl}
 				isAdmin={isAdmin}
 				guest={guest}

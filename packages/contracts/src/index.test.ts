@@ -59,12 +59,23 @@ describe("simulation API schemas", () => {
 			authProvidersResponseSchema.parse({ providers: ["github"] }),
 		).toEqual({
 			providers: ["github"],
+			usernamePassword: false,
 		});
 		expect(authProvidersResponseSchema.parse({ providers: ["auth0"] })).toEqual(
 			{
 				providers: ["auth0"],
+				usernamePassword: false,
 			},
 		);
+		expect(
+			authProvidersResponseSchema.parse({
+				providers: [],
+				usernamePassword: true,
+			}),
+		).toEqual({
+			providers: [],
+			usernamePassword: true,
+		});
 		expect(
 			authProvidersResponseSchema.safeParse({ providers: ["discord"] }).success,
 		).toBe(false);

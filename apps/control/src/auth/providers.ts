@@ -4,7 +4,12 @@
  * Reads GitHub, Google, and Auth0 credentials from ControlConfig. GitHub and
  * Google are Better Auth social providers; Auth0 goes through the genericOAuth
  * plugin (decision 044).
+ *
+ * OAuth providers remain separate from username/password accounts. Account
+ * linking is intentionally disabled so each sign-in method has its own
+ * allowlist identity.
  */
+import type { BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { auth0, genericOAuth } from "better-auth/plugins/generic-oauth";
 import type { ControlConfig } from "../config";
@@ -39,18 +44,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 	}
 }
 
-export type SocialProviders = {
-	github?: {
-		clientId: string;
-		clientSecret: string;
-		overrideUserInfoOnSignIn: boolean;
-	};
-	google?: {
-		clientId: string;
-		clientSecret: string;
-		overrideUserInfoOnSignIn: boolean;
-	};
-};
+export type SocialProviders = NonNullable<BetterAuthOptions["socialProviders"]>;
 
 export type OAuthProvider = "github" | "google" | "auth0";
 

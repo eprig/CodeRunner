@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 
 interface TopbarProps {
 	displayName: string;
-	email: string;
 	avatarUrl: string | null;
 	isAdmin: boolean;
 	onSwitchProject: () => void;
@@ -27,7 +26,6 @@ interface TopbarProps {
 
 export function Topbar({
 	displayName,
-	email,
 	avatarUrl,
 	isAdmin,
 	onSwitchProject,
@@ -73,7 +71,6 @@ export function Topbar({
 				</Button>
 				<UserMenu
 					displayName={displayName}
-					email={email}
 					avatarUrl={avatarUrl}
 					isAdmin={isAdmin}
 					layoutMenu={layoutMenu}

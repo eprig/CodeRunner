@@ -19,7 +19,7 @@ These are simultaneous-use numbers: if only half your team codes at once, you ca
 
 After initial setup it mostly can. The bundled lesson catalog (baked into the workspace Docker image at `/opt/frc-catalog`) and the Gradle/WPILib dependency cache (primed during the image build) are all local, so students can open lessons, edit code, and run simulations without any network access.
 
-What does require internet: pulling the control and workspace Docker images for the first time (the first `docker compose pull`/`up` downloads several gigabytes), and OAuth sign-in. GitHub and Google OAuth redirect students to external servers to authenticate, so login does not work without internet. For a fully offline evaluation you can use demo mode (`--demo`), which bypasses authentication entirely.
+What does require internet: pulling the control and workspace Docker images for the first time (the first `docker compose pull`/`up` downloads several gigabytes), and OAuth sign-in. GitHub and Google OAuth redirect students to external servers to authenticate, so OAuth login does not work without internet. Username/password sign-in (`CODERUNNER_USERNAME_PASSWORD=true`) works entirely locally. For a fully offline evaluation you can also use demo mode (`--demo`), which bypasses authentication entirely.
 
 ### Can students accidentally break each other's work?
 
