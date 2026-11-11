@@ -4,7 +4,10 @@ import type {
 	LessonModuleKind,
 	WorkspaceId,
 } from "@frc-coderunner/contracts";
-import { lessonModuleSubdirSchema } from "@frc-coderunner/contracts";
+import {
+	lessonModuleSubdirSchema,
+	STABLE_WPILIB_YEAR,
+} from "@frc-coderunner/contracts";
 import { IMAGE_CATALOG_DIR } from "./catalog";
 import { getLogger } from "./logging";
 import type { WorkspaceRuntimeProvider } from "./runtime";
@@ -145,6 +148,7 @@ export type CatalogLoadContext = {
 	moduleId: string;
 	subdir: string;
 	kind: LessonModuleKind;
+	wpilibYear?: number;
 	remote: { cloneUrl: string; branch: string } | null;
 	send: ImportSend;
 };
@@ -300,6 +304,7 @@ export class ImportManager {
 
 	private async executeCatalogLoad(ctx: CatalogLoadContext): Promise<void> {
 		const { workspace, send, moduleId, kind, remote } = ctx;
+		const wpilibYear = ctx.wpilibYear ?? STABLE_WPILIB_YEAR;
 		const subdir = safeCatalogSubdir(ctx.subdir);
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 		const stagingName = `.lesson-${timestamp}`;
@@ -403,6 +408,9 @@ export class ImportManager {
 				"-c",
 				"lsiown -R abc:abc /workspace/project",
 			]);
+			if (kind === "robot") {
+				await this.configureWpilibYear(workspace.id, wpilibYear);
+			}
 			// Clear the editor workspace cache so redhat.java rebuilds its project model.
 			await this.runtimeExec(workspace.id, [
 				"rm",
@@ -417,6 +425,34 @@ export class ImportManager {
 		this._storage.setCurrentModule(workspace.id, moduleId, kind);
 
 		send({ type: "progress", stage: "complete", detail: "Lesson loaded." });
+	}
+
+	private async configureWpilibYear(
+		workspaceId: WorkspaceId,
+		wpilibYear: number,
+	): Promise<void> {
+		if (
+			!Number.isInteger(wpilibYear) ||
+			wpilibYear < 2000 ||
+			wpilibYear > 9999
+		) {
+			throw new ImportError("Invalid WPILib year.");
+		}
+		const year = String(wpilibYear);
+		await this.runtimeExec(workspaceId, [
+			"bash",
+			"-c",
+			[
+				`year=${year}`,
+				"if [ -f /workspace/project/settings.gradle ]; then",
+				'  sed -i -E "s/(String frcYear = \')[0-9]{4}/\\1$year/" /workspace/project/settings.gradle',
+				"fi",
+				"if [ -f /workspace/project/build.gradle ]; then",
+				'  sed -i -E "s/(edu\\.wpi\\.first\\.GradleRIO\\" version \\")[0-9]{4}/\\1$year/" /workspace/project/build.gradle',
+				"fi",
+				'find /workspace/project/vendordeps /workspace/project/.wpilib -type f \\( -name \'*.json\' \\) -print0 2>/dev/null | xargs -0 -r sed -i -E "s/(\\"frcYear\\"[[:space:]]*:[[:space:]]*\\")[0-9]{4}/\\1$year/; s/(\\"projectYear\\"[[:space:]]*:[[:space:]]*\\")[0-9]{4}/\\1$year/"',
+			].join("\n"),
+		]);
 	}
 
 	private async ensureRunning(workspaceId: WorkspaceId): Promise<void> {

@@ -519,7 +519,13 @@ export async function handleWorkspaceRoute(
 		try {
 			const parsed = lessonLoadRequestSchema.parse(await request.json());
 			// Resolve only — the actual load streams over WS.
-			await catalogSource.resolveModule(parsed.moduleId);
+			const module = await catalogSource.resolveModule(parsed.moduleId);
+			if (parsed.wpilibYear !== undefined && module.kind !== "robot") {
+				return jsonResponse(
+					{ error: "WPILib year is only valid for robot lessons." },
+					{ status: 400 },
+				);
+			}
 			return jsonResponse({ ok: true });
 		} catch (error) {
 			if (error instanceof ImportError) {

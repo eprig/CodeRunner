@@ -15,7 +15,8 @@
 			"description": "A minimal WPILib and AdvantageKit command-based robot you run from the Driver Station.",
 			"subdir": "modules/robot-starter",
 			"kind": "robot",
-			"order": 20
+			"order": 20,
+			"year": 2026
 		}
 	]
 }

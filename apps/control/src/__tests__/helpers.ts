@@ -83,6 +83,7 @@ export async function createCatalogDir(root: string): Promise<string> {
 						subdir: "modules/robot-starter",
 						kind: "robot",
 						order: 20,
+						year: 2026,
 					},
 				],
 			},

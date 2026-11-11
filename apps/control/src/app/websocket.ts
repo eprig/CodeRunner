@@ -4,6 +4,7 @@ import {
 	importRequestSchema,
 	lessonLoadRequestSchema,
 	runClientMessageSchema,
+	STABLE_WPILIB_YEAR,
 	type WorkspaceId,
 } from "@frc-coderunner/contracts";
 import { type CatalogSource, RemoteCatalogSource } from "../catalog";
@@ -328,6 +329,8 @@ export function createWebSocketHandlers(ctx: WebSocketHandlerContext) {
 							JSON.parse(socketMessageText(message)),
 						);
 						const module = await catalogSource.resolveModule(parsed.moduleId);
+						const wpilibYear =
+							parsed.wpilibYear ?? module.year ?? STABLE_WPILIB_YEAR;
 						const remote =
 							catalogSource instanceof RemoteCatalogSource
 								? {
@@ -344,6 +347,7 @@ export function createWebSocketHandlers(ctx: WebSocketHandlerContext) {
 							moduleId: module.id,
 							subdir: module.subdir,
 							kind: module.kind,
+							wpilibYear,
 							remote,
 							send,
 						});

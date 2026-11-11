@@ -343,6 +343,7 @@ describe("ImportManager — bundled catalog load", () => {
 				moduleId: "robot-starter",
 				subdir: "modules/robot-starter",
 				kind: "robot",
+				wpilibYear: 2025,
 				remote: null,
 				send: (m) => messages.push(m),
 			};
@@ -363,6 +364,11 @@ describe("ImportManager — bundled catalog load", () => {
 					),
 			);
 			expect(copyCall).toBeTruthy();
+			const yearConfig = mock.execCalls.find(
+				(c) =>
+					c.command[0] === "bash" && (c.command[2] ?? "").includes("year=2025"),
+			);
+			expect(yearConfig).toBeTruthy();
 
 			// Drops .git (gitless lessons).
 			const dropGit = mock.execCalls.find(
