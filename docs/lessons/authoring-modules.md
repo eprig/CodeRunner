@@ -100,7 +100,6 @@ Every field is required.
 | `subdir` | string | Relative path from the repo root to the module directory (for example `modules/hello-world`). Must be a relative path of safe segments: no leading slash and no `..`. |
 | `kind` | string | Either `plain-java` or `robot`. See below. |
 | `order` | integer | Sort position in the menu (ascending). |
-| `year` | integer, optional | Default WPILib FRC year for a `robot` module. If omitted, the current stable year is used. |
 
 ### Sparse ordering
 
