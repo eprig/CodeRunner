@@ -39,6 +39,6 @@ export {
 	lessonModuleSchema,
 	previewDocumentsResponseSchema,
 	runServerMessageSchema,
-	STABLE_WPILIB_YEAR,
 	simStatusResponseSchema,
+	wpilibVersionSchema,
 } from "@frc-coderunner/contracts";

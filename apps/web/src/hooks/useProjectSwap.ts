@@ -26,7 +26,7 @@ export interface ProjectSwapState {
  */
 export type ProjectSwapKind =
 	| { kind: "import"; url: string }
-	| { kind: "lesson"; moduleId: string; wpilibYear?: number };
+	| { kind: "lesson"; moduleId: string };
 
 interface UseProjectSwapReturn {
 	state: ProjectSwapState;
@@ -57,10 +57,7 @@ function endpointFor(target: ProjectSwapKind): {
 	}
 	return {
 		path: "ws/lesson-load",
-		payload: JSON.stringify({
-			moduleId: target.moduleId,
-			wpilibYear: target.wpilibYear,
-		}),
+		payload: JSON.stringify({ moduleId: target.moduleId }),
 	};
 }
 

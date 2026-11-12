@@ -21,6 +21,15 @@
 # remounts the iframe. A client away longer than 30 s reloads the editor.
 
 EXTENSIONS_DIR="${HOME}/extensions"
+PROJECT_DIR="/workspace/project"
+
+if [[ -f "${PROJECT_DIR}/build.gradle" ]] &&
+	grep -Eq 'JavaVersion\.VERSION_25|sourceCompatibility[[:space:]]*=[[:space:]]*25|targetCompatibility[[:space:]]*=[[:space:]]*25' \
+		"${PROJECT_DIR}/build.gradle" &&
+	[[ -x /usr/lib/jvm/jdk-25/bin/java ]]; then
+	export JAVA_HOME="/usr/lib/jvm/jdk-25"
+	export PATH="${JAVA_HOME}/bin:${PATH}"
+fi
 
 codium_args=(
   --host 0.0.0.0

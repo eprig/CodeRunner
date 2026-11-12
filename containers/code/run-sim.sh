@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Two-phase simulation runner. Invoked by start-sim.sh under setsid.
 #
-# Phase 1: run `./gradlew simulateExternalJavaRelease`. GradleRIO builds the
-# project, extracts JNI natives into build/jni/release, and writes
-# build/sim/release_java.json describing the runnable simulation. Because the
+# Phase 1: run the project-compatible external Java simulation task. GradleRIO
+# builds the project, extracts JNI natives, and writes a descriptor describing
+# the runnable simulation. Because the
 # task is not a JavaExec, Gradle exits cleanly once it finishes.
 #
 # Phase 2: read the descriptor, set HALSim env vars and library paths, then
@@ -50,6 +50,21 @@ if [[ -f "$init_script" ]]; then
 fi
 
 gradle_task="simulateExternalJavaRelease"
+descriptor_name="release_java.json"
+gradle_build_file=""
+for candidate in "$project_root/build.gradle" "$project_root/build.gradle.kts"; do
+  if [[ -f "$candidate" ]]; then
+    gradle_build_file="$candidate"
+    break
+  fi
+done
+if [[ -n "$gradle_build_file" ]] && grep -q 'org\.wpilib\.GradleRIO' "$gradle_build_file"; then
+  # GradleRIO 2027 uses the unified external Java simulation task and writes
+  # build/sim/java.json. Older edu.wpi.first projects use the release-specific
+  # task and release_java.json.
+  gradle_task="simulateExternalJava"
+  descriptor_name="java.json"
+fi
 if [[ "$sim_mode" == "build" ]]; then
   gradle_task="build"
 fi
@@ -64,7 +79,7 @@ fi
   --project-cache-dir "$gradle_cache" \
   "-Dorg.gradle.jvmargs=$gradle_jvmargs" \
   "${init_args[@]}" \
-  "$gradle_task" || {
+  writeSimulationClasspath "$gradle_task" || {
   gradle_status=$?
   echo "BUILD FAILED: Gradle exited with code $gradle_status" >&2
   exit "$gradle_status"
@@ -74,7 +89,7 @@ if [[ "$sim_mode" == "build" ]]; then
   exit 0
 fi
 
-descriptor="$project_root/build/sim/release_java.json"
+descriptor="$project_root/build/sim/$descriptor_name"
 if [[ ! -f "$descriptor" ]]; then
   echo "BUILD FAILED: sim descriptor was not produced at $descriptor" >&2
   exit 1
@@ -86,6 +101,9 @@ if [[ -z "$robot_jar" ]]; then
   echo "BUILD FAILED: no robot JAR under $project_root/build/libs" >&2
   exit 1
 fi
+
+main_class="$(jq -r '.[0].mainClassName // empty' "$descriptor")"
+classpath_file="$project_root/build/sim/classpath.txt"
 
 lib_dir="$(jq -r '.[0].libraryDir // empty' "$descriptor")"
 
@@ -126,6 +144,11 @@ if [[ "$sim_mode" == "debug" ]]; then
   echo "Waiting up to 120s for the editor's debugger to attach on port ${debug_port}..."
   # $$ survives exec, so this is the robot JVM's pid (and sim.pid's).
   printf '{"port":%s,"pid":%s}\n' "$debug_port" "$$" >"$debug_marker"
+fi
+
+if [[ -n "$main_class" && -f "$classpath_file" ]]; then
+  classpath="$(cat "$classpath_file")"
+  exec java "${java_args[@]}" -cp "$classpath" "$main_class"
 fi
 
 exec java "${java_args[@]}" -jar "$robot_jar"

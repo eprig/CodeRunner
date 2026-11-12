@@ -14,7 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useLessons } from "@/hooks/useLessons";
 import { type ProjectSwapKind, useProjectSwap } from "@/hooks/useProjectSwap";
-import { type LessonModule, STABLE_WPILIB_YEAR } from "@/lib/contracts";
+import type { LessonModule } from "@/lib/contracts";
 import { cn } from "@/lib/utils";
 
 interface SwitchProjectDialogProps {
@@ -29,8 +29,8 @@ interface SwitchProjectDialogProps {
 }
 
 type Pending =
-	| { kind: "lesson"; module: LessonModule; wpilibYear?: number }
-	| { kind: "reset"; module: LessonModule; wpilibYear?: number }
+	| { kind: "lesson"; module: LessonModule }
+	| { kind: "reset"; module: LessonModule }
 	| { kind: "import"; url: string };
 
 function KindTag({ kind }: { kind: LessonModule["kind"] }) {
@@ -60,10 +60,6 @@ export function SwitchProjectDialog({
 	const [pending, setPending] = useState<Pending | null>(null);
 	const [url, setUrl] = useState("");
 	const [urlError, setUrlError] = useState("");
-	const [selectedYears, setSelectedYears] = useState<Record<string, number>>(
-		{},
-	);
-
 	const running = state.status === "connecting" || state.status === "running";
 	const finished = state.status === "done" || state.status === "error";
 
@@ -119,7 +115,6 @@ export function SwitchProjectDialog({
 					: {
 							kind: "lesson",
 							moduleId: next.module.id,
-							wpilibYear: next.wpilibYear,
 						};
 			startSwap(target);
 		},
@@ -196,10 +191,6 @@ export function SwitchProjectDialog({
 								<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 									{modules.map((module, index) => {
 										const isCurrent = module.id === currentModule;
-										const wpilibYear =
-											selectedYears[module.id] ??
-											module.year ??
-											STABLE_WPILIB_YEAR;
 										return (
 											<div
 												key={module.id}
@@ -219,38 +210,10 @@ export function SwitchProjectDialog({
 												<p className="mb-3 line-clamp-2 flex-1 text-[11.5px] leading-snug text-muted-foreground">
 													{module.description}
 												</p>
-												{module.kind === "robot" && (
-													<label className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-														<span>WPILib year</span>
-														<select
-															className="h-7 rounded-md border border-input bg-background px-2 text-[11px] text-foreground"
-															value={wpilibYear}
-															onChange={(event) =>
-																setSelectedYears((current) => ({
-																	...current,
-																	[module.id]: Number(event.target.value),
-																}))
-															}
-														>
-															{[STABLE_WPILIB_YEAR, module.year]
-																.filter(
-																	(year): year is number => year !== undefined,
-																)
-																.filter(
-																	(year, index, years) =>
-																		years.indexOf(year) === index,
-																)
-																.sort((a, b) => b - a)
-																.map((year) => (
-																	<option key={year} value={year}>
-																		{year}
-																		{year === STABLE_WPILIB_YEAR
-																			? " (stable)"
-																			: ""}
-																	</option>
-																))}
-														</select>
-													</label>
+												{module.kind === "robot" && module.wpilib_version && (
+													<p className="mb-2 text-[10.5px] font-medium text-muted-foreground">
+														WPILib {module.wpilib_version}
+													</p>
 												)}
 												<div className="flex items-center justify-between">
 													{isCurrent ? (
@@ -270,7 +233,6 @@ export function SwitchProjectDialog({
 																setPending({
 																	kind: "reset",
 																	module,
-																	wpilibYear,
 																})
 															}
 														>
@@ -286,7 +248,6 @@ export function SwitchProjectDialog({
 																choose({
 																	kind: "lesson",
 																	module,
-																	wpilibYear,
 																})
 															}
 														>

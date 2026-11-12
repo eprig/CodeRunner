@@ -40,7 +40,8 @@ the same behavior as the desktop PathPlanner app.
 
 The bundled robot starter uses **GradleRIO 2026.2.1** and Temurin **17.0.15**
 for Gradle, project compilation, and simulation. The editor includes the
-**wpilibsuite.vscode-wpilib 2026.1.1** extension. Students do not need Java or
+the `wpilibsuite.vscode-wpilib` extension matching the project's WPILib year.
+Students do not need Java or
 VS Code installed on their own devices.
 
 ### Can I build, debug, or start a simulation from the WPILib extension?
