@@ -1,4 +1,5 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
 	autoChooserPatchSchema,
 	driverStationPatchSchema,
@@ -312,11 +313,25 @@ export async function handleWorkspaceRoute(
 			// Treat an unreadable/missing project dir as empty (first-login state).
 			projectEmpty = true;
 		}
+		let wpilib_version: string | null = null;
+		try {
+			const buildGradle = await readFile(
+				resolve(auth.workspace.project_path, "build.gradle"),
+				"utf8",
+			);
+			wpilib_version =
+				/(?:edu\.wpi\.first|org\.wpilib)\.GradleRIO"\s+version\s+"([^"]+)"/.exec(
+					buildGradle,
+				)?.[1] ?? null;
+		} catch {
+			// A console project or team import may not have a GradleRIO build file.
+		}
 		const classroom = findGuestClassroom(storage.db, auth.user.id);
 		return jsonResponse(
 			sessionResponse(auth, {
 				demo: storage.config.demo,
 				projectEmpty,
+				wpilib_version,
 				guest: classroom
 					? { classroomEndsAt: classroom.expires_at }
 					: undefined,

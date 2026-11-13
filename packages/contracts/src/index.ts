@@ -57,6 +57,7 @@ export const sessionResponseSchema = z.object({
 		slug: workspaceSlugSchema,
 		currentModule: z.string().nullable(),
 		currentModuleKind: lessonModuleKindSchema.nullable(),
+		wpilib_version: z.string().nullable(),
 		projectEmpty: z.boolean(),
 	}),
 	demo: z.boolean().optional(),
@@ -431,6 +432,15 @@ export const lessonModuleSubdirSchema = z
 		"Subdir must be a relative path made of safe path segments.",
 	);
 
+export const wpilibVersionSchema = z
+	.string()
+	.regex(
+		/^v\d{4}\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+		"WPILib version must be a vYYYY.major.minor release tag.",
+	);
+
+export const STABLE_WPILIB_YEAR = 2026;
+
 export const lessonModuleSchema = z.object({
 	id: z.string().min(1),
 	title: z.string().min(1),
@@ -438,6 +448,7 @@ export const lessonModuleSchema = z.object({
 	subdir: lessonModuleSubdirSchema,
 	kind: lessonModuleKindSchema,
 	order: z.number().int(),
+	wpilib_version: wpilibVersionSchema.optional(),
 });
 
 export const lessonCatalogSchema = z.object({

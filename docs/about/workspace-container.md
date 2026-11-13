@@ -25,10 +25,10 @@ top:
 | Component | Version |
 |---|---|
 | VSCodium reh-web (`codium-server`) | 1.126.04524 |
-| Adoptium Temurin project JDK | 17.0.15+6 (x64/aarch64) |
+| Adoptium Temurin project JDK | 17.0.15+6 and 25.0.5+8 (x64/aarch64) |
 | Adoptium Temurin JDT LS JDK | 21.0.12.1+1 (x64/aarch64) |
 | redhat.java (JDT Language Server) | 1.55.0 |
-| vscode-wpilib (WPILib extension) | 2026.1.1 |
+| vscode-wpilib (WPILib extension) | Matches the project's `.wpilib/wpilib_preferences.json` year |
 | Java Extension Pack | 0.31.1 (members pinned individually) |
 | Spotless Gradle | 1.2.1 |
 | GitHub CLI (`gh`) | latest stable at image build time |
@@ -53,6 +53,9 @@ settings. The image seeds the following defaults at first start:
 - The VS Code **Gradle Build Server** path (`java.gradle.buildServer.enabled`)
   is disabled; JDT LS still imports Gradle projects, removing roughly 700 MiB
   of duplicated Gradle infrastructure from the measured peak.
+- Projects declaring `JavaVersion.VERSION_25` automatically use the bundled
+  JDK 25 for Gradle, editor imports, and simulation; other projects continue
+  to use JDK 17.
 
 All of these defaults are environment-overridable at container launch time
 (see the container README for the full variable list).
@@ -136,13 +139,16 @@ script runs before the editor starts:
 1. Copies the primed Gradle cache from `/opt/frc-gradle-cache/` into
    `/config/.gradle/`.
 2. Installs the pre-bundled CodeRunner-managed VS Code extensions from
-   `/opt/frc-extensions-cache/` into `/config/extensions/`.
+   `/opt/frc-extensions-cache/` into `/config/extensions/`, then replaces
+   `vscode-wpilib` with the latest release for the project's
+   `.wpilib/wpilib_preferences.json` year.
 3. Seeds bounded Java/Gradle settings and the dark theme into the editor's
    Remote/Machine configuration.
 
 On subsequent starts the Gradle copy is skipped. The extension step selectively
-reconciles only CodeRunner-managed IDs to the image versions, preserving
-unrelated student-installed extensions. A settings-migration step also lowers
+reconciles only CodeRunner-managed IDs, then updates `vscode-wpilib` to the
+project year's release, preserving unrelated student-installed extensions. A
+settings-migration step also lowers
 any legacy `-Xmx8G` JDT LS setting that may have been imported from a WPILib
 project.
 

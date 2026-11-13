@@ -112,7 +112,6 @@ export class RateLimitError extends Error {
 
 const MAX_CLONE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
 const CLONE_TIMEOUT_SECONDS = 60;
-
 function safeCatalogSubdir(subdir: string): string {
 	const parsed = lessonModuleSubdirSchema.safeParse(subdir);
 	if (!parsed.success) {
@@ -286,6 +285,22 @@ export class ImportManager {
 			await this.cleanupStaging(workspace.id, stagingName);
 		}
 
+		// A team import can change the project's required Java version. Reconcile
+		// after the swap so Gradle, the editor, and simulation use the project JDK.
+		const javaRuntimeResult = await this.runtimeExec(workspace.id, [
+			"/usr/local/bin/reconcile-frc-java-runtime",
+			"/workspace/project",
+		]);
+		if (javaRuntimeResult.exitCode !== 0) {
+			const detail =
+				javaRuntimeResult.stderr.trim() ||
+				javaRuntimeResult.stdout.trim() ||
+				`exit ${javaRuntimeResult.exitCode}`;
+			throw new ImportError(
+				`Unable to configure the project's Java runtime: ${detail}`,
+			);
+		}
+
 		// Clear the editor workspace cache and the loaded-module record: a team
 		// import renders as a normal robot project (current_module = NULL).
 		await this.runtimeExec(workspace.id, [
@@ -403,6 +418,33 @@ export class ImportManager {
 				"-c",
 				"lsiown -R abc:abc /workspace/project",
 			]);
+			const javaRuntimeResult = await this.runtimeExec(workspace.id, [
+				"/usr/local/bin/reconcile-frc-java-runtime",
+				"/workspace/project",
+			]);
+			if (javaRuntimeResult.exitCode !== 0) {
+				const detail =
+					javaRuntimeResult.stderr.trim() ||
+					javaRuntimeResult.stdout.trim() ||
+					`exit ${javaRuntimeResult.exitCode}`;
+				throw new ImportError(
+					`Unable to configure the project's Java runtime: ${detail}`,
+				);
+			}
+			const extensionResult = await this.runtimeExec(workspace.id, [
+				"/usr/local/bin/reconcile-frc-wpilib-extension",
+				"/workspace/project",
+				"/config/extensions",
+			]);
+			if (extensionResult.exitCode !== 0) {
+				const detail =
+					extensionResult.stderr.trim() ||
+					extensionResult.stdout.trim() ||
+					`exit ${extensionResult.exitCode}`;
+				throw new ImportError(
+					`Unable to install the project's WPILib extension: ${detail}`,
+				);
+			}
 			// Clear the editor workspace cache so redhat.java rebuilds its project model.
 			await this.runtimeExec(workspace.id, [
 				"rm",

@@ -105,8 +105,35 @@ describe("sim container scripts", () => {
 				stdout: "ignore",
 				stderr: "ignore",
 			});
+
 			await stop.exited;
 			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("run-sim uses the unified descriptor for org.wpilib GradleRIO projects", async () => {
+		const fixture = await createRunSimFixture([
+			'last=""; for arg; do last="$arg"; done; printf "%s\\n" "$last" > task.txt',
+			"mkdir -p build/sim build/libs",
+			'printf "[{\\"libraryDir\\":\\"%s\\",\\"extensions\\":[],\\"mainClassName\\":\\"com.example.Robot\\"}]\\n" "$PWD/../lib" > build/sim/java.json',
+			'printf "%s\\n" "$PWD/build/libs/project.jar" > build/sim/classpath.txt',
+			"touch build/libs/robot.jar",
+		]);
+		try {
+			await writeFile(
+				join(fixture.projectRoot, "build.gradle"),
+				'plugins { id "org.wpilib.GradleRIO" version "2027.0.0-alpha-7" }\n',
+			);
+			const result = await fixture.run(null);
+			expect(result.exitCode).toBe(0);
+			expect(
+				await readFile(join(fixture.projectRoot, "task.txt"), "utf8"),
+			).toBe("simulateExternalJava\n");
+			const javaArgs = await readFile(join(fixture.root, "java.args"), "utf8");
+			expect(javaArgs).toContain("-cp");
+			expect(javaArgs).toContain("com.example.Robot");
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
 		}
 	});
 

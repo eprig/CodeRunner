@@ -60,7 +60,6 @@ export function SwitchProjectDialog({
 	const [pending, setPending] = useState<Pending | null>(null);
 	const [url, setUrl] = useState("");
 	const [urlError, setUrlError] = useState("");
-
 	const running = state.status === "connecting" || state.status === "running";
 	const finished = state.status === "done" || state.status === "error";
 
@@ -113,7 +112,10 @@ export function SwitchProjectDialog({
 			const target: ProjectSwapKind =
 				next.kind === "import"
 					? { kind: "import", url: next.url }
-					: { kind: "lesson", moduleId: next.module.id };
+					: {
+							kind: "lesson",
+							moduleId: next.module.id,
+						};
 			startSwap(target);
 		},
 		[startSwap],
@@ -208,6 +210,11 @@ export function SwitchProjectDialog({
 												<p className="mb-3 line-clamp-2 flex-1 text-[11.5px] leading-snug text-muted-foreground">
 													{module.description}
 												</p>
+												{module.kind === "robot" && module.wpilib_version && (
+													<p className="mb-2 text-[10.5px] font-medium text-muted-foreground">
+														WPILib {module.wpilib_version}
+													</p>
+												)}
 												<div className="flex items-center justify-between">
 													{isCurrent ? (
 														<span className="text-[10.5px] font-medium uppercase tracking-wide text-primary">
@@ -223,7 +230,10 @@ export function SwitchProjectDialog({
 															size="sm"
 															className="h-7 gap-1.5 px-2 text-[12px]"
 															onClick={() =>
-																setPending({ kind: "reset", module })
+																setPending({
+																	kind: "reset",
+																	module,
+																})
 															}
 														>
 															<RotateCcw className="size-3.5" />
@@ -234,7 +244,12 @@ export function SwitchProjectDialog({
 															type="button"
 															size="sm"
 															className="h-7 px-3 text-[12px]"
-															onClick={() => choose({ kind: "lesson", module })}
+															onClick={() =>
+																choose({
+																	kind: "lesson",
+																	module,
+																})
+															}
 														>
 															Load
 														</Button>
