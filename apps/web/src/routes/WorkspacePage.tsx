@@ -47,6 +47,7 @@ export function WorkspacePage() {
 	const currentModule = workspace?.currentModule ?? null;
 	const currentModuleKind = workspace?.currentModuleKind ?? null;
 	const projectEmpty = workspace?.projectEmpty ?? false;
+	const wpilib_version = workspace?.wpilib_version ?? null;
 
 	// `plain-java` console lessons hide the sim chrome; everything else (robot
 	// lessons, empty workspace, team import) renders the full robot layout.
@@ -248,6 +249,7 @@ export function WorkspacePage() {
 				isAdmin={isAdmin}
 				guest={guest}
 				onSwitchProject={() => setSwitchOpen(true)}
+				wpilib_version={wpilib_version}
 				showSimPaneTabs={!isConsoleModule}
 				previewOpen={layout.rightVisible}
 				onTogglePreview={

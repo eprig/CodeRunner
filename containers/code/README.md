@@ -8,10 +8,10 @@ Merged per-student container for V2. Combines VSCodium reh-web (`codium-server`)
 |---|---|---|---|
 | Base image | linuxserver/vscodium-web:1.126.04524-ls35 | GPL-3.0 | Ubuntu 24.04, s6-overlay, codium-server, PUID/PGID |
 | VSCodium reh-web (`codium-server`) | 1.126.04524 (from base) | MIT | Browser-based VS Code editor |
-| Project JDK | Temurin 17.0.15+6 | GPL-2.0 w/ Classpath Exception | Gradle, Java compilation, and robot simulation |
+| Project JDK | Temurin 17.0.15+6 / 25.0.5+8 | GPL-2.0 w/ Classpath Exception | Gradle, Java compilation, and robot simulation; Java 25 projects select JDK 25 |
 | Tooling JDK | Temurin 21.0.12.1+1 | GPL-2.0 w/ Classpath Exception | Java language server runtime |
 | redhat.java | 1.55.0 | EPL-2.0 | Java language support (JDT LS) |
-| vscode-wpilib | 2026.1.1 | BSD-3-Clause | WPILib project tooling |
+| vscode-wpilib | Project-year release | BSD-3-Clause | WPILib project tooling selected from `.wpilib/wpilib_preferences.json` |
 | Java Extension Pack | 0.31.1 | MIT | Debugger, test runner, Maven/Gradle, project manager |
 | Spotless Gradle | 1.2.1 | MIT | Code formatting via Spotless |
 | Gradle cache | Primed from template | BSD-3-Clause (WPILib) | Fast first builds (~seconds vs ~minutes) |

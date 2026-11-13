@@ -34,6 +34,28 @@ function sortByOrder(modules: LessonModule[]): LessonModule[] {
 	return [...modules].sort((a, b) => a.order - b.order);
 }
 
+function extractProjectVersion(buildGradle: string): string | undefined {
+	return /(?:edu\.wpi\.first|org\.wpilib)\.GradleRIO"\s+version\s+"([^"]+)"/.exec(
+		buildGradle,
+	)?.[1];
+}
+
+async function addProjectVersions(
+	modules: LessonModule[],
+	readBuildGradle: (module: LessonModule) => Promise<string | null>,
+): Promise<LessonModule[]> {
+	return Promise.all(
+		modules.map(async (module) => {
+			if (module.kind !== "robot") return module;
+			const buildGradle = await readBuildGradle(module);
+			const version = buildGradle
+				? extractProjectVersion(buildGradle)
+				: undefined;
+			return version ? { ...module, wpilib_version: `v${version}` } : module;
+		}),
+	);
+}
+
 /**
  * Normalize a configured catalog repo (either `https://github.com/owner/repo(.git)`
  * or `owner/repo`) into its `owner` / `repo` parts.
@@ -70,7 +92,33 @@ export class BundledCatalogSource implements CatalogSource {
 		try {
 			const raw = await readFile(manifestPath, "utf8");
 			const parsed = lessonCatalogSchema.parse(JSON.parse(raw));
-			return { modules: sortByOrder(parsed.modules), error: null };
+			return {
+				modules: await addProjectVersions(
+					sortByOrder(parsed.modules),
+					async (module) => {
+						try {
+							return await readFile(
+								resolve(this.catalogDir, module.subdir, "build.gradle"),
+								"utf8",
+							);
+						} catch (error) {
+							const code =
+								error instanceof Error && "code" in error
+									? error.code
+									: undefined;
+							if (code !== "ENOENT") {
+								log.warn("bundled module version unreadable", {
+									moduleId: module.id,
+									err:
+										error instanceof Error ? error : new Error(String(error)),
+								});
+							}
+							return null;
+						}
+					},
+				),
+				error: null,
+			};
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "Unable to read catalog.";
@@ -130,7 +178,23 @@ export class RemoteCatalogSource implements CatalogSource {
 				throw new Error(`HTTP ${response.status} fetching catalog manifest.`);
 			}
 			const parsed = lessonCatalogSchema.parse(await response.json());
-			const modules = sortByOrder(parsed.modules);
+			const modules = await addProjectVersions(
+				sortByOrder(parsed.modules),
+				async (module) => {
+					try {
+						const response = await this.fetchImpl(
+							`https://raw.githubusercontent.com/${this.owner}/${this.repo}/${this.branch}/${module.subdir}/build.gradle`,
+						);
+						return response.ok ? await response.text() : null;
+					} catch (error) {
+						log.warn("remote module version fetch failed", {
+							moduleId: module.id,
+							err: error instanceof Error ? error : new Error(String(error)),
+						});
+						return null;
+					}
+				},
+			);
 			this.cached = { modules, fetchedAt: now };
 			return { modules, error: null };
 		} catch (error) {

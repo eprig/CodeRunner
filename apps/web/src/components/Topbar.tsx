@@ -11,6 +11,7 @@ interface TopbarProps {
 	avatarUrl: string | null;
 	isAdmin: boolean;
 	onSwitchProject: () => void;
+	wpilib_version?: string | null;
 	/** Only for layouts that render the sim pane; requires a `SimPaneTabs` root. */
 	showSimPaneTabs?: boolean;
 	/**
@@ -31,6 +32,7 @@ export function Topbar({
 	avatarUrl,
 	isAdmin,
 	onSwitchProject,
+	wpilib_version,
 	showSimPaneTabs = false,
 	previewOpen,
 	onTogglePreview,
@@ -45,6 +47,11 @@ export function Topbar({
 				<strong className="whitespace-nowrap text-[13.5px] font-semibold tracking-tight">
 					CodeRunner
 				</strong>
+				{wpilib_version && (
+					<span className="whitespace-nowrap rounded border border-border/70 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+						WPILib {wpilib_version}
+					</span>
+				)}
 			</div>
 			<div className="ml-auto flex flex-wrap items-center gap-2 min-[1100px]:gap-5">
 				{showSimPaneTabs && <SimPaneTabSelector onReveal={onRevealRightPane} />}
