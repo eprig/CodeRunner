@@ -28,6 +28,7 @@ describe("GET /u/:slug/api/lessons", () => {
 					"robot-starter",
 				]);
 				expect(body.modules[0]?.kind).toBe("plain-java");
+				expect(body.modules[1]?.wpilib_version).toBeUndefined();
 			},
 			{ dockerRunner: docker.runner },
 		);

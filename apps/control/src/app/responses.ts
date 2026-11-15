@@ -34,6 +34,7 @@ export function sessionResponse(
 	options: {
 		demo?: boolean;
 		projectEmpty: boolean;
+		wpilib_version?: string | null;
 		guest?: { classroomEndsAt: string } | undefined;
 	},
 ): SessionResponse {
@@ -52,6 +53,7 @@ export function sessionResponse(
 			slug: auth.workspace.slug,
 			currentModule: auth.workspace.current_module ?? null,
 			currentModuleKind: auth.workspace.current_module_kind ?? null,
+			wpilib_version: options.wpilib_version ?? null,
 			projectEmpty: options.projectEmpty,
 		},
 		...(options.demo ? { demo: true } : {}),

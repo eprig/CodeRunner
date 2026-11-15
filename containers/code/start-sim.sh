@@ -13,6 +13,13 @@ pid_file="${SIM_PID_FILE:-$HOME/sim.pid}"
 log_file="${SIM_LOG_FILE:-$HOME/sim.log}"
 project_root="${SIM_PROJECT_ROOT:-/workspace/project}"
 
+if [[ -f "$project_root/build.gradle" ]] &&
+  grep -Eq 'JavaVersion\.VERSION_25|sourceCompatibility[[:space:]]*=[[:space:]]*25|targetCompatibility[[:space:]]*=[[:space:]]*25' "$project_root/build.gradle" &&
+  [[ -x /usr/lib/jvm/jdk-25/bin/java ]]; then
+  export JAVA_HOME=/usr/lib/jvm/jdk-25
+  export PATH="$JAVA_HOME/bin:${PATH#"$JAVA_HOME/bin:"}"
+fi
+
 mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")" "$GRADLE_USER_HOME" "$GRADLE_PROJECT_CACHE_DIR"
 
 export GRADLE_USER_HOME GRADLE_PROJECT_CACHE_DIR

@@ -285,6 +285,13 @@ describe("ImportManager — github import", () => {
 					c.command.some((a) => a === "/workspace/project/.git"),
 			);
 			expect(strippedGit).toBeUndefined();
+
+			const javaRuntime = mock.execCalls.find(
+				(c) =>
+					c.command[0] === "/usr/local/bin/reconcile-frc-java-runtime" &&
+					c.command[1] === "/workspace/project",
+			);
+			expect(javaRuntime).toBeTruthy();
 		});
 	});
 
@@ -363,7 +370,6 @@ describe("ImportManager — bundled catalog load", () => {
 					),
 			);
 			expect(copyCall).toBeTruthy();
-
 			// Drops .git (gitless lessons).
 			const dropGit = mock.execCalls.find(
 				(c) =>
