@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+	flattenLessonModules,
+	isLessonFolder,
+	type LessonCatalogEntry,
 	type LessonModule,
 	lessonCatalogSchema,
 } from "@frc-coderunner/contracts";
@@ -20,7 +23,7 @@ export const IMAGE_CATALOG_DIR = "/opt/frc-catalog";
 const REMOTE_CACHE_TTL_MS = 60_000;
 
 export type CatalogManifest = {
-	modules: LessonModule[];
+	modules: LessonCatalogEntry[];
 	error: string | null;
 };
 
@@ -30,30 +33,21 @@ export interface CatalogSource {
 	resolveModule(moduleId: string): Promise<LessonModule>;
 }
 
-function sortByOrder(modules: LessonModule[]): LessonModule[] {
-	return [...modules].sort((a, b) => a.order - b.order);
-}
-
-function extractProjectVersion(buildGradle: string): string | undefined {
-	return /(?:edu\.wpi\.first|org\.wpilib)\.GradleRIO"\s+version\s+"([^"]+)"/.exec(
-		buildGradle,
-	)?.[1];
-}
-
-async function addProjectVersions(
-	modules: LessonModule[],
-	readBuildGradle: (module: LessonModule) => Promise<string | null>,
-): Promise<LessonModule[]> {
-	return Promise.all(
-		modules.map(async (module) => {
-			if (module.kind !== "robot") return module;
-			const buildGradle = await readBuildGradle(module);
-			const version = buildGradle
-				? extractProjectVersion(buildGradle)
-				: undefined;
-			return version ? { ...module, wpilib_version: `v${version}` } : module;
-		}),
-	);
+/**
+ * Sort every entry by `order` at each level of the tree. Modules and folders
+ * share one display scale, so a folder's position is controlled by its own
+ * `order`, not by where it sits in the JSON array. Array order only breaks ties.
+ */
+function sortCatalogEntries(
+	entries: LessonCatalogEntry[],
+): LessonCatalogEntry[] {
+	return [...entries]
+		.sort((a, b) => a.order - b.order)
+		.map((entry) =>
+			isLessonFolder(entry)
+				? { ...entry, modules: sortCatalogEntries(entry.modules) }
+				: entry,
+		);
 }
 
 /**
@@ -93,30 +87,7 @@ export class BundledCatalogSource implements CatalogSource {
 			const raw = await readFile(manifestPath, "utf8");
 			const parsed = lessonCatalogSchema.parse(JSON.parse(raw));
 			return {
-				modules: await addProjectVersions(
-					sortByOrder(parsed.modules),
-					async (module) => {
-						try {
-							return await readFile(
-								resolve(this.catalogDir, module.subdir, "build.gradle"),
-								"utf8",
-							);
-						} catch (error) {
-							const code =
-								error instanceof Error && "code" in error
-									? error.code
-									: undefined;
-							if (code !== "ENOENT") {
-								log.warn("bundled module version unreadable", {
-									moduleId: module.id,
-									err:
-										error instanceof Error ? error : new Error(String(error)),
-								});
-							}
-							return null;
-						}
-					},
-				),
+				modules: sortCatalogEntries(parsed.modules),
 				error: null,
 			};
 		} catch (error) {
@@ -141,7 +112,8 @@ export class RemoteCatalogSource implements CatalogSource {
 
 	private readonly owner: string;
 	private readonly repo: string;
-	private cached: { modules: LessonModule[]; fetchedAt: number } | null = null;
+	private cached: { modules: LessonCatalogEntry[]; fetchedAt: number } | null =
+		null;
 
 	constructor(
 		repo: string,
@@ -178,23 +150,7 @@ export class RemoteCatalogSource implements CatalogSource {
 				throw new Error(`HTTP ${response.status} fetching catalog manifest.`);
 			}
 			const parsed = lessonCatalogSchema.parse(await response.json());
-			const modules = await addProjectVersions(
-				sortByOrder(parsed.modules),
-				async (module) => {
-					try {
-						const response = await this.fetchImpl(
-							`https://raw.githubusercontent.com/${this.owner}/${this.repo}/${this.branch}/${module.subdir}/build.gradle`,
-						);
-						return response.ok ? await response.text() : null;
-					} catch (error) {
-						log.warn("remote module version fetch failed", {
-							moduleId: module.id,
-							err: error instanceof Error ? error : new Error(String(error)),
-						});
-						return null;
-					}
-				},
-			);
+			const modules = sortCatalogEntries(parsed.modules);
 			this.cached = { modules, fetchedAt: now };
 			return { modules, error: null };
 		} catch (error) {
@@ -219,10 +175,12 @@ export class RemoteCatalogSource implements CatalogSource {
 }
 
 function findModuleOrThrow(
-	modules: LessonModule[],
+	entries: LessonCatalogEntry[],
 	moduleId: string,
 ): LessonModule {
-	const found = modules.find((module) => module.id === moduleId);
+	const found = flattenLessonModules(entries).find(
+		(module) => module.id === moduleId,
+	);
 	if (!found) {
 		throw new ImportError(`Unknown lesson module "${moduleId}".`);
 	}
