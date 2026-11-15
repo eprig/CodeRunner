@@ -210,11 +210,6 @@ export function SwitchProjectDialog({
 												<p className="mb-3 line-clamp-2 flex-1 text-[11.5px] leading-snug text-muted-foreground">
 													{module.description}
 												</p>
-												{module.kind === "robot" && module.wpilib_version && (
-													<p className="mb-2 text-[10.5px] font-medium text-muted-foreground">
-														WPILib {module.wpilib_version}
-													</p>
-												)}
 												<div className="flex items-center justify-between">
 													{isCurrent ? (
 														<span className="text-[10.5px] font-medium uppercase tracking-wide text-primary">
