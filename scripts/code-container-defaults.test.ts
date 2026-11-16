@@ -77,11 +77,18 @@ describe("Code container VS Code defaults", () => {
 			'if ."java.jdt.ls.java.home" == $legacyJdtJavaHome',
 		);
 		expect(contents).toContain('then del(."java.jdt.ls.java.home")');
+		// Version switching pins Gradle to the project's JDK (Java 25 for
+		// projects that ask for it) instead of only seeding a default.
 		expect(contents).toContain(
-			'."java.import.gradle.java.home" //= $projectJavaHome',
+			'."java.import.gradle.java.home" = $projectJavaHome',
 		);
+		expect(contents).toContain("JavaVersion\\.VERSION_25");
+		expect(contents).toContain('PROJECT_JAVA_HOME="/usr/lib/jvm/jdk-25"');
 		expect(contents).toContain('"name": "JavaSE-17"');
-		expect(contents).toContain('"default": true');
+		expect(contents).toContain('"name": "JavaSE-25"');
+		expect(contents).toContain(
+			'"default": ($projectJavaRuntime == "JavaSE-17")',
+		);
 	});
 
 	test("ships one directly primed Gradle cache layer", async () => {

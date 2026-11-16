@@ -63,7 +63,6 @@ function KindTag({ kind }: { kind: LessonModule["kind"] }) {
 
 interface ModuleCardProps {
 	module: LessonModule;
-	number: number;
 	isCurrent: boolean;
 	onChoose: (module: LessonModule) => void;
 	onReset: (module: LessonModule) => void;
@@ -71,7 +70,6 @@ interface ModuleCardProps {
 
 function ModuleCard({
 	module,
-	number,
 	isCurrent,
 	onChoose,
 	onReset,
@@ -130,7 +128,6 @@ function ModuleCard({
 
 interface ModuleGridProps {
 	modules: LessonModule[];
-	numbers: Map<string, number>;
 	currentModule: string | null;
 	onChoose: (module: LessonModule) => void;
 	onReset: (module: LessonModule) => void;
@@ -138,7 +135,6 @@ interface ModuleGridProps {
 
 function ModuleGrid({
 	modules,
-	numbers,
 	currentModule,
 	onChoose,
 	onReset,
@@ -149,7 +145,6 @@ function ModuleGrid({
 				<ModuleCard
 					key={module.id}
 					module={module}
-					number={numbers.get(module.id) ?? 1}
 					isCurrent={module.id === currentModule}
 					onChoose={onChoose}
 					onReset={onReset}
@@ -195,7 +190,6 @@ function CatalogTree({
 						>
 							<ModuleGrid
 								modules={block.modules}
-								numbers={numbers}
 								currentModule={currentModule}
 								onChoose={onChoose}
 								onReset={onReset}

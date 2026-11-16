@@ -57,6 +57,8 @@ export const sessionResponseSchema = z.object({
 		slug: workspaceSlugSchema,
 		currentModule: z.string().nullable(),
 		currentModuleKind: lessonModuleKindSchema.nullable(),
+		/** GradleRIO version read from the workspace's `build.gradle`, if any. */
+		wpilib_version: z.string().nullable(),
 		projectEmpty: z.boolean(),
 	}),
 	demo: z.boolean().optional(),
@@ -429,6 +431,14 @@ export const lessonModuleSubdirSchema = z
 	.regex(
 		/^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/,
 		"Subdir must be a relative path made of safe path segments.",
+	);
+
+/** A WPILib release tag as authored in `modules.json` (`vYYYY.major.minor`). */
+export const wpilibVersionSchema = z
+	.string()
+	.regex(
+		/^v\d{4}\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+		"WPILib version must be a vYYYY.major.minor release tag.",
 	);
 
 /**
