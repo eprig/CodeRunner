@@ -71,6 +71,7 @@ export type ControlConfigInput = Partial<
 		| "demo"
 		| "usernamePasswordAuth"
 		| "adminEmails"
+		| "gradleCachePruneDays"
 		| "adminUsernames"
 	>
 > & {
