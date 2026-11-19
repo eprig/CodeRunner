@@ -58,6 +58,7 @@ export const sessionResponseSchema = z.object({
 		currentModule: z.string().nullable(),
 		currentModuleKind: lessonModuleKindSchema.nullable(),
 		/** GradleRIO version read from the workspace's `build.gradle`, if any. */
+		wpilib_version: z.string().nullable(),
 		projectEmpty: z.boolean(),
 	}),
 	demo: z.boolean().optional(),
