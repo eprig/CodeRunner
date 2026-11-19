@@ -433,7 +433,7 @@ export const lessonModuleSubdirSchema = z
 	);
 
 /** A WPILib release tag as authored in `modules.json` (`vYYYY.major.minor`). */
-export const wpilibVersionSchema =z
+export const wpilibVersionSchema = z
 	.string()
 	.regex(
 		/^v\d{4}\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,

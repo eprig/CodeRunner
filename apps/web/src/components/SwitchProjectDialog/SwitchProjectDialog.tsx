@@ -68,12 +68,7 @@ interface ModuleCardProps {
 	onReset: (module: LessonModule) => void;
 }
 
-function ModuleCard({
-	module,
-	isCurrent,
-	onChoose,
-	onReset,
-}: ModuleCardProps) {
+function ModuleCard({ module, isCurrent, onChoose, onReset }: ModuleCardProps) {
 	return (
 		<div
 			className={cn(
