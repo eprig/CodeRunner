@@ -190,6 +190,10 @@ export async function withApp<T>(
 	const app = await createApp({
 		dataDir: join(root, "data"),
 		catalogDir,
+		// Tests must not inherit the operator's local .env (a remote lesson repo
+		// or bootstrap admin would make results machine-specific); individual
+		// tests opt in to the remote catalog explicitly.
+		catalogRepo: null,
 		webDistDir,
 		advantageScopeDistDir,
 		pathplannerDistDir,
@@ -197,9 +201,6 @@ export async function withApp<T>(
 		baseUrl: "http://localhost:4000",
 		idleStopMinutes: 30,
 		containerAutoStart: false,
-		// Tests must not inherit the operator's local .env (a remote lesson repo
-		// or bootstrap admin would make results machine-specific).
-		catalogRepo: null,
 		adminEmails: [],
 		adminUsernames: [],
 		githubClientId: "",

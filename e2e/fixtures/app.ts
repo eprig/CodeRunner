@@ -119,6 +119,9 @@ export const test = base.extend<AppFixtures & AppOptions>({
 			const candidate = await createApp({
 				dataDir: join(root, "data"),
 				catalogDir,
+				// Keep fixtures independent of the operator's local .env: never
+				// inherit LESSONS_CATALOG_REPO and hit the network.
+				catalogRepo: null,
 				webDistDir,
 				advantageScopeDistDir: ascopeDistDir,
 				pathplannerDistDir,
@@ -126,8 +129,6 @@ export const test = base.extend<AppFixtures & AppOptions>({
 				baseUrl,
 				idleStopMinutes: 30,
 				containerAutoStart: false,
-				// Keep fixtures independent of the operator's local .env.
-				catalogRepo: null,
 				adminEmails: [],
 				adminUsernames: [],
 				githubClientId: "",
