@@ -54,8 +54,10 @@ communications are ready, choose a mode and click **Enable**.
 
 ### Do students need accounts? What if I just want to try it?
 
-Students can sign in with GitHub or Google if their email is on the operator's
-allowlist. For a short classroom session, an admin can share a code so students
+Students can sign in with GitHub, Google, or Auth0 if their identity is allowed
+by the operator's roster or domain rules. Where per-student OAuth accounts are
+impractical, an admin can add a username/password user and hand them a temporary
+password. For a short classroom session, an admin can share a code so students
 can join with just a name. Guest accounts and projects are deleted when the
 classroom ends.
 

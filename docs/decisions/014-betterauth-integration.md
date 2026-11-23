@@ -1,7 +1,7 @@
 # Decision 014 — Better Auth Integration
 
-**Status:** Accepted  
-**Date:** 2026-05-10
+**Status:** Accepted; identity/roster details superseded by [049](./049-roster-scaffolding-and-additive-logins.md)  
+**Date:** 2026-05-10; updated 2026-11-21
 
 ## Context
 
@@ -55,3 +55,6 @@ The question is how to integrate without creating a compatibility mess.
   implementation.
 - Better Auth version upgrades may introduce schema changes; running
   `runMigrations()` at startup handles this automatically.
+- Decision 049 extends this model: the `user` table is also the single roster
+  row, `data/allowlist.json` keeps only domain rules, and one user may have
+  multiple additive sign-in methods. Public self-service sign-up is disabled.

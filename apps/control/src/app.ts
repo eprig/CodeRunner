@@ -393,6 +393,38 @@ export async function createApp(
 			return storage.auth.handler(request);
 		}
 
+		// A coach-set temporary password is a one-time credential. Until the
+		// student rotates it, only the account page (and the assets needed to
+		// render it) are reachable. Better Auth's own routes above stay open so
+		// /change-password and /sign-out work.
+		const sessionForPasswordGate = await getSessionFromRequest(
+			storage,
+			request,
+		);
+		if (sessionForPasswordGate?.user.mustChangePassword) {
+			const p = url.pathname;
+			const allowed =
+				p === "/account" ||
+				p.startsWith("/assets/") ||
+				p === "/coderunner-icon.png" ||
+				p === "/favicon.ico";
+			if (!allowed) {
+				if (
+					request.method === "GET" &&
+					(request.headers.get("accept")?.includes("text/html") ?? false)
+				) {
+					return redirect("/account");
+				}
+				return jsonResponse(
+					{
+						error: "You must change your temporary password before continuing.",
+						mustChangePassword: true,
+					},
+					{ status: 403 },
+				);
+			}
+		}
+
 		if (url.pathname === "/" && request.method === "GET") {
 			const session = await getSessionFromRequest(storage, request);
 			if (session) {

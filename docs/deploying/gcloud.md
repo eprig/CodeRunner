@@ -211,8 +211,8 @@ gh workflow run "Deploy" --ref main -f tag=v2.0.0
 
 The easiest path is to set `CODERUNNER_ADMIN_EMAIL` in `/opt/coderunner/.env`
 (comma-separated for multiple coaches) before you first sign in. On startup the
-control plane allowlists each listed email and grants it the admin role at first
-OAuth sign-in — no exec steps. Add the line and restart the stack:
+control plane provisions each listed email in the roster with the admin role —
+no exec steps. Add the line and restart the stack:
 
 ```bash
 gcloud compute ssh coderunner --zone=us-central1-a --tunnel-through-iap \
@@ -226,15 +226,17 @@ gcloud compute ssh coderunner --zone=us-central1-a --tunnel-through-iap \
   --command='cd /opt/coderunner && sudo docker compose exec -T control coderunner users promote <your-email>'
 ```
 
-Either way you also need to allowlist your students' emails before they can sign
-in. From an IAP SSH session:
+Either way you also need to add your students' emails (or an allowed domain) to
+the roster before they can sign in. From an IAP SSH session:
 
 ```bash
-sudo docker compose exec -T control coderunner allowlist add coach@frcteam.org
+sudo docker compose exec -T control coderunner allowlist add student@frcteam.org
+# or allow a whole domain:
+sudo docker compose exec -T control coderunner allowlist add frcteam.org
 ```
 
-See [OAuth Credentials](./oauth-credentials.md) for the full allowlist and admin
-bootstrap flow.
+See [OAuth Credentials](./oauth-credentials.md) for the full roster, domain, and
+admin bootstrap flow.
 
 ## Runtime shape on the VM
 

@@ -5,39 +5,54 @@
  * - SQLite database (shared with AppStorage)
  * - GitHub + Google OAuth providers, plus Auth0 via genericOAuth
  * - Optional username/password auth (enabled by CODERUNNER_USERNAME_PASSWORD)
- * - Custom user fields: role, slug
- * - Username/email allowlist enforcement via hooks (Auth0 users: role claim instead)
+ * - Custom user fields: role, slug, rosterScaffold, mustChangePassword
+ * - User-table roster enforcement via hooks (Auth0 users: role claim instead)
  * - 14-day session expiry with daily refresh
- * - Separate username/password and OAuth accounts (account linking disabled)
+ * - Additive logins: one user may hold a username, an email, and OAuth accounts
+ *
+ * Public sign-up is disabled. A coach provisions (or updates) a Better Auth
+ * `user` row with a temporary password through `auth/roster.ts`; the student
+ * signs in and must rotate that password before using the rest of the site.
+ * OAuth uses Better Auth's implicit linking to attach another account to the
+ * same user. Google verifies the real address, so it can be linked to a
+ * username-only row even though that row has a reserved placeholder email.
  *
  * Passwords never reach the database in plaintext: Better Auth hashes them
  * with scrypt (random 16-byte salt, N=16384, r=16, p=1, 64-byte key) and stores
  * only `<salt>:<hash>` on the credential account row.
  *
- * Username accounts have no real email. A reserved
- * `<username>@students.coderunner.invalid` address satisfies Better Auth's
- * required email column; it can never receive mail. Linking an OAuth account
- * Username accounts use a reserved `.invalid` address; OAuth accounts use
- * their provider email as their allowlist identity.
+ * Username-only accounts use a reserved
+ * `<username>@students.coderunner.invalid` address, which can never receive
+ * mail. Accounts with a real email keep it and can sign in either way.
  */
 
 import type { Database } from "bun:sqlite";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
 import { username } from "better-auth/plugins";
 import type { AuditEventInput } from "../audit";
 import type { ControlConfig } from "../config";
 import { getLogger } from "../logging";
 import {
-	isEmailAllowed,
-	isUsernameAllowed,
+	isSyntheticEmail,
 	isValidUsername,
 	normalizeUsername,
 	reloadAllowlist,
 	syntheticEmailForUsername,
 } from "./allowlist";
 import { classroomPlugin } from "./classroom-plugin";
-import { buildAuth0Plugin, buildSocialProviders } from "./providers";
+import { enrollmentPlugin } from "./enrollment-plugin";
+import {
+	buildAuth0Plugin,
+	buildSocialProviders,
+	getEnabledAuthProviders,
+} from "./providers";
+import { isEmailPermitted, isUsernamePermitted } from "./roster";
 
 const log = getLogger("auth");
 
@@ -48,6 +63,7 @@ const ROSTER_USERNAME_MESSAGE =
 const INVALID_USERNAME_MESSAGE =
 	"Usernames must be 3-30 characters using letters, numbers, dots, or underscores.";
 
+/** True for the genericOAuth callback of the Auth0 provider. */
 /** True for the genericOAuth callback of the Auth0 provider. */
 function isAuth0Callback(
 	ctx:
@@ -128,10 +144,24 @@ export function createAuth(
 		socialProviders,
 		emailAndPassword: {
 			enabled: usernamePasswordEnabled,
+			// Students are provisioned by a coach; public sign-up would create a
+			// second roster row and a second workspace for the same person.
+			disableSignUp: true,
 			// Better Auth's defaults, stated explicitly: passwords shorter than 8
 			// are rejected and inputs are capped at 128 characters.
 			minPasswordLength: 8,
 			maxPasswordLength: 128,
+		},
+		account: {
+			accountLinking: {
+				enabled: true,
+				// A username-only roster row has a reserved, undeliverable email.
+				// Google verifies the real address, so allow it to be linked to
+				// that row instead of creating a second user. Auth0's role claim
+				// is still authoritative.
+				allowDifferentEmails: true,
+				trustedProviders: getEnabledAuthProviders(config),
+			},
 		},
 		plugins: [
 			classroomPlugin({
@@ -150,6 +180,7 @@ export function createAuth(
 							maxUsernameLength: 30,
 							usernameValidator: (value) => isValidUsername(value),
 						}),
+						enrollmentPlugin(),
 					]
 				: []),
 		],
@@ -162,11 +193,37 @@ export function createAuth(
 			},
 		},
 		user: {
+			changeEmail: {
+				// The endpoint stays registered so the before hook can return a
+				// clear error. Every request is rejected: email is roster/
+				// provider-owned, set by coaches or verified by OAuth.
+				enabled: true,
+				updateEmailWithoutVerification: false,
+			},
 			additionalFields: {
 				role: {
 					type: "string",
 					required: false,
 					defaultValue: "student",
+					input: false,
+				},
+				// Set only by the roster service. Lets user.create.before tell a
+				// coach-provisioned row from a client/OAuth signup without a
+				// client-settable flag.
+				rosterScaffold: {
+					type: "boolean",
+					required: false,
+					defaultValue: false,
+					input: false,
+					returned: false,
+				},
+				// True until the student rotates their coach-set temporary
+				// password. The control plane blocks other routes in the
+				// meantime; /change-password clears it via an after-hook.
+				mustChangePassword: {
+					type: "boolean",
+					required: false,
+					defaultValue: false,
 					input: false,
 				},
 				slug: {
@@ -208,6 +265,12 @@ export function createAuth(
 							return { data: { ...user, slug, role: "student" } };
 						}
 
+						// Only the roster service sets this (input: false for clients).
+						// Provisioned rows are already vetted; don't re-run the
+						// domain/roster gate against their own email.
+						const provisioned =
+							(user as { rosterScaffold?: boolean }).rosterScaffold === true;
+
 						const rawUsername = usernameFromUser(user);
 						if (rawUsername) {
 							const username = normalizeUsername(rawUsername);
@@ -216,27 +279,37 @@ export function createAuth(
 									message: INVALID_USERNAME_MESSAGE,
 								});
 							}
-							await refreshAllowlistBeforeCheck();
-							if (!isUsernameAllowed(username)) {
-								log.warn("new user rejected: username not on allowlist", {
-									username,
-								});
-								throw new APIError("FORBIDDEN", {
-									message: ROSTER_USERNAME_MESSAGE,
-								});
+							if (!provisioned) {
+								await refreshAllowlistBeforeCheck();
+								if (!isUsernamePermitted(db, username)) {
+									log.warn("new user rejected: username not on roster", {
+										username,
+									});
+									throw new APIError("FORBIDDEN", {
+										message: ROSTER_USERNAME_MESSAGE,
+									});
+								}
 							}
-							const role = config.adminUsernames.includes(username)
-								? "admin"
-								: "student";
+							const role =
+								(user as { role?: string }).role ??
+								(config.adminUsernames.includes(username)
+									? "admin"
+									: "student");
 							const slug = slugify(username);
-							log.info("creating new username user", { username, slug, role });
+							const email = isSyntheticEmail(user.email)
+								? syntheticEmailForUsername(username)
+								: user.email;
+							log.info("creating new username user", {
+								username,
+								slug,
+								role,
+								provisioned,
+							});
 							return {
 								data: {
 									...user,
 									username,
-									// Never trust a client-supplied email for username
-									// accounts; derive the reserved address server-side.
-									email: syntheticEmailForUsername(username),
+									email,
 									name: user.name.trim() || username,
 									slug,
 									role,
@@ -246,7 +319,7 @@ export function createAuth(
 
 						const slug = slugFromEmail(user.email);
 						if (isAuth0Callback(ctx)) {
-							// Auth0 vets the user; the role claim replaces the allowlist.
+							// Auth0 vets the user; the role claim replaces the roster.
 							// The Auth0 profile mapper already denied users with no role
 							// and put the role on `user`.
 							const role = (user as { role?: string }).role;
@@ -257,93 +330,91 @@ export function createAuth(
 							});
 							return { data: { ...user, slug, role } };
 						}
-						// Enforce allowlist on new user creation
-						await refreshAllowlistBeforeCheck();
-						if (!isEmailAllowed(user.email)) {
-							log.warn("new user rejected: not on allowlist", {
-								email: user.email,
-							});
-							throw new APIError("FORBIDDEN", {
-								message: ROSTER_EMAIL_MESSAGE,
-							});
+						if (!provisioned) {
+							await refreshAllowlistBeforeCheck();
+							if (!isEmailPermitted(db, user.email)) {
+								log.warn("new user rejected: not on roster", {
+									email: user.email,
+								});
+								throw new APIError("FORBIDDEN", {
+									message: ROSTER_EMAIL_MESSAGE,
+								});
+							}
 						}
-						const role = config.adminEmails.includes(user.email.toLowerCase())
-							? "admin"
-							: "student";
-						log.info("creating new user", { email: user.email, slug, role });
-						return {
-							data: {
-								...user,
-								slug,
-								role,
-							},
-						};
+						const role =
+							(user as { role?: string }).role ??
+							(config.adminEmails.includes(user.email.toLowerCase())
+								? "admin"
+								: "student");
+						log.info("creating new user", {
+							email: user.email,
+							slug,
+							role,
+							provisioned,
+						});
+						return { data: { ...user, slug, role } };
 					},
 				},
 			},
 		},
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
-				// Username/password sign-in must be blocked *before* Better Auth
-				// creates a session: an after-hook rejection still ships the
-				// fresh session cookie, whose 5-minute cookie cache would keep
-				// the user signed in, and the session row delete races the
-				// cookie. Sign-up is covered by user.create.before above, but is
-				// also checked here so the roster error arrives before hashing.
+				// Sign-in roster checks run *before* Better Auth creates a session:
+				// an after-hook rejection still ships the cookie, whose 5-minute
+				// cache would keep the user signed in briefly.
 				if (ctx.path === "/sign-up/email") {
-					const body = ctx.body as
-						| { username?: unknown; name?: unknown }
-						| undefined;
-					const rawUsername = body?.username;
-					if (typeof rawUsername !== "string") {
+					throw new APIError("FORBIDDEN", {
+						message:
+							"Accounts are created by your coach. Ask them to add you to the roster.",
+					});
+				}
+
+				// Email is roster/provider-owned: coaches set it when provisioning
+				// and Google supplies the verified address. The account page only
+				// displays it, so a direct API call must be rejected too.
+				if (ctx.path === "/change-email") {
+					throw new APIError("FORBIDDEN", {
+						message:
+							"Email is managed by your coach or sign-in provider and can't be changed here.",
+					});
+				}
+
+				// Better Auth stops the last account from being unlinked, but a
+				// user can still be locked out by removing the wrong one. Keep a
+				// username + password while an OAuth method exists, and vice versa.
+				// The credential half clears `username` via /roster/remove-password.
+				if (ctx.path === "/unlink-account") {
+					const providerId = (ctx.body as { providerId?: unknown } | undefined)
+						?.providerId;
+					if (typeof providerId !== "string") return;
+					const session = await getSessionFromCtx(ctx);
+					if (!session) return; // the endpoint itself rejects this
+					const accounts = await ctx.context.internalAdapter.findAccounts(
+						session.user.id,
+					);
+					if (providerId === "credential") {
 						throw new APIError("BAD_REQUEST", {
-							message: INVALID_USERNAME_MESSAGE,
+							message:
+								"Use Remove username and password so your username is cleared too.",
 						});
 					}
-					const normalized = normalizeUsername(rawUsername);
-					if (!isValidUsername(normalized)) {
+					if (accounts.length <= 1) {
 						throw new APIError("BAD_REQUEST", {
-							message: INVALID_USERNAME_MESSAGE,
+							message:
+								"Add another sign-in method before disconnecting this one.",
 						});
 					}
-					await refreshAllowlistBeforeCheck();
-					if (!isUsernameAllowed(normalized)) {
-						log.warn("username/password sign-up rejected: not on allowlist", {
-							username: normalized,
-						});
-						throw new APIError("FORBIDDEN", {
-							message: ROSTER_USERNAME_MESSAGE,
-						});
-					}
-					// Force the reserved address and derive a display name, so a
-					// client cannot choose an email that collides with a real user.
-					return {
-						context: {
-							body: {
-								...(body as Record<string, unknown>),
-								email: syntheticEmailForUsername(normalized),
-								name:
-									typeof body?.name === "string" && body.name.trim()
-										? body.name
-										: normalized,
-							},
-						},
-					};
+					return;
 				}
 
 				if (ctx.path === "/sign-in/username") {
 					const rawUsername = (ctx.body as { username?: unknown } | undefined)
 						?.username;
-					if (typeof rawUsername !== "string") {
-						return;
-					}
+					if (typeof rawUsername !== "string") return;
 					const normalized = normalizeUsername(rawUsername);
 					await refreshAllowlistBeforeCheck();
-					const allowed = isUsernameAllowed(normalized);
-					if (!allowed) {
-					}
-					if (!allowed) {
-						log.warn("username/password sign-in rejected: not on allowlist", {
+					if (!isUsernamePermitted(db, normalized)) {
+						log.warn("username/password sign-in rejected: not on roster", {
 							username: normalized,
 						});
 						throw new APIError("FORBIDDEN", {
@@ -353,36 +424,81 @@ export function createAuth(
 					return;
 				}
 
-				// Email sign-in has no place in a username deployment: it would
-				// accept the synthetic address and bypass the username-facing
-				// error paths. Username sign-in is the supported endpoint.
 				if (ctx.path === "/sign-in/email") {
-					throw new APIError("BAD_REQUEST", {
-						message: "Sign in with your username instead.",
-					});
+					const rawEmail = (ctx.body as { email?: unknown } | undefined)?.email;
+					if (typeof rawEmail !== "string") return;
+					const email = rawEmail.trim().toLowerCase();
+					// Username-only users have a synthetic mailbox; make them use
+					// the username endpoint so the error messages stay accurate.
+					if (isSyntheticEmail(email)) {
+						throw new APIError("BAD_REQUEST", {
+							message: "Sign in with your username instead.",
+						});
+					}
+					await refreshAllowlistBeforeCheck();
+					if (!isEmailPermitted(db, email)) {
+						log.warn("email/password sign-in rejected: not on roster", {
+							email,
+						});
+						throw new APIError("FORBIDDEN", {
+							message: ROSTER_EMAIL_MESSAGE,
+						});
+					}
 				}
 			}),
 			after: createAuthMiddleware(async (ctx) => {
+				// The temp password is a one-time credential. Clear the flag as
+				// soon as the student rotates it, and refresh the cookie cache so
+				// the control-plane gate sees the change on the very next request.
+				if (ctx.path === "/change-password") {
+					const current = ctx.context.session;
+					if (current?.session) {
+						const updated = await ctx.context.internalAdapter.updateUser(
+							current.user.id,
+							{ mustChangePassword: false },
+						);
+						if (updated) {
+							// With revokeOtherSessions, Better Auth deletes every session
+							// and returns the new token in the response. Refreshing from
+							// ctx.context.session would write the deleted token back.
+							let activeSession = current;
+							const returned = ctx.context.returned as
+								| { token?: unknown }
+								| undefined;
+							if (typeof returned?.token === "string") {
+								const fresh = await ctx.context.internalAdapter.findSession(
+									returned.token,
+								);
+								if (fresh) activeSession = fresh;
+							}
+							await setSessionCookie(ctx, {
+								session: activeSession.session,
+								user: updated,
+							});
+						}
+					}
+				}
+
 				const auth0 = isAuth0Callback(ctx);
 				const oauthCallback = ctx.path === "/callback/:id" || auth0;
-				const usernamePasswordSignIn = ctx.path === "/sign-in/username";
-				const usernamePasswordSignUp = ctx.path === "/sign-up/email";
+				const passwordSignIn =
+					ctx.path === "/sign-in/username" || ctx.path === "/sign-in/email";
 
-				if (oauthCallback || usernamePasswordSignIn || usernamePasswordSignUp) {
+				if (oauthCallback || passwordSignIn) {
 					const newSession = ctx.context.newSession;
-					// Re-check the allowlist for returning OAuth users. New users
-					// were already checked by user.create.before, username/password
-					// sign-in by the before hook, and Auth0 users are vetted by
-					// their role claim instead.
+					// Re-check the roster for returning OAuth users. New users were
+					// already checked by user.create.before; username/password sign-in
+					// by the before hook; Auth0 by its role claim instead.
 					if (newSession && oauthCallback && !auth0) {
 						await refreshAllowlistBeforeCheck();
 						const user = newSession.user as Record<string, unknown>;
 						const linkedUsername = usernameFromUser(user);
 						const allowed =
-							isEmailAllowed(newSession.user.email) ||
-							(linkedUsername !== null && isUsernameAllowed(linkedUsername));
+							isEmailPermitted(db, newSession.user.email) ||
+							(linkedUsername !== null &&
+								isUsernamePermitted(db, linkedUsername));
 						if (!allowed) {
-							log.warn("oauth callback rejected: not on allowlist", {
+							log.warn("oauth callback rejected: not on roster", {
 								email: newSession.user.email,
 								username: linkedUsername,
 							});

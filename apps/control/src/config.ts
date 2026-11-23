@@ -335,7 +335,12 @@ export function loadControlConfig(
 		dbPath: resolve(
 			input.dbPath ?? Bun.env.FRC_DB_PATH ?? resolve(dataDir, "app.db"),
 		),
-		catalogRepo: input.catalogRepo ?? Bun.env.LESSONS_CATALOG_REPO ?? null,
+		// An explicit `null` means "no remote catalog" even when the operator's
+		// environment has LESSONS_CATALOG_REPO set (tests and demos rely on this).
+		catalogRepo:
+			input.catalogRepo !== undefined
+				? input.catalogRepo
+				: (Bun.env.LESSONS_CATALOG_REPO ?? null),
 		catalogBranch:
 			input.catalogBranch ?? Bun.env.LESSONS_CATALOG_BRANCH ?? "main",
 		catalogDir: resolve(

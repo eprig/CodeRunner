@@ -28,16 +28,19 @@ their own.
 
 ## What information is collected
 
-**Account information from sign-in.** CodeRunner supports signing in with Google or GitHub.
-It requests only basic profile scopes — for Google, `openid`, `email`, and `profile`. From
-that, it stores:
+**Account information from sign-in.** CodeRunner supports signing in with Google, GitHub,
+or Auth0, plus an optional username/password method for teams that need it. OAuth requests
+only basic profile scopes — for Google, `openid`, `email`, and `profile`. From a provider it
+stores:
 
-- your Google or GitHub account identifier
+- your provider account identifier
 - your email address
 - your display name
 - your profile picture URL
 
-These fields refresh from the provider each time you sign in.
+These fields refresh from the provider each time you sign in. For username/password,
+your operator provisions your username or email and a temporary password; only a hashed
+form of the password is stored, and you choose a new one at first sign-in.
 
 CodeRunner requests **no** access to Gmail, Drive, Calendar, Contacts, your repositories, or
 any other Google or GitHub data. It cannot read your mail, files, or private code.
@@ -58,8 +61,8 @@ target), and standard application logs.
 The information you provide is used only to run the service:
 
 - to identify you across sessions and keep you signed in
-- to check your email against the operator's allowlist, or your code against
-  an active classroom
+- to check your identity against the operator's roster or allowed domains, or
+  your code against an active classroom
 - to derive your workspace name and provision your personal container
 - to display your name and picture in the interface
 - to let administrators of that instance see who has an account and what administrative
@@ -89,9 +92,9 @@ make.
 
 ## How long it is kept
 
-Google and GitHub sign-in sessions last up to 14 days and refresh as you use
-the app. Those account records and workspaces persist until an administrator
-deletes them or removes the instance. Classroom guest sessions end with the
+Sign-in sessions last up to 14 days and refresh as you use the app. Account
+records and workspaces persist until an administrator deletes them or removes
+the instance. Classroom guest sessions end with the
 classroom. Guest accounts and workspace files are then deleted from the live
 server. Audit entries and any operator backups may remain.
 
@@ -105,15 +108,15 @@ work you need to keep. See the [Terms of Service](./terms.md).
   CodeRunner's access from your
   [Google Account permissions page](https://myaccount.google.com/permissions) or GitHub
   application settings. Doing so prevents future sign-ins.
-- **Access or delete your data.** Contact your instance's administrator. They can delete your
-  account and workspace from the server.
+- **Access or delete your data.** Contact your instance's administrator. They can change your
+  sign-in methods, reset your password, or delete your account and workspace from the server.
 
 ## Children's privacy
 
 CodeRunner is built for FRC teams, so many users are minors. It is deployed by schools and
 robotics programs, and students use it under the supervision of that program. Students can
-sign in with an allowed Google or GitHub account, or join a time-limited classroom with a
-code and a name. If you are a parent or guardian with questions about a particular instance,
+sign in with an allowed provider or coach-provisioned account, or join a time-limited
+classroom with a code and a name. If you are a parent or guardian with questions about a particular instance,
 contact the operating school or team.
 
 ## Changes to this policy

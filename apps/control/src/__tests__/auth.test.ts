@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
@@ -7,9 +7,9 @@ import {
 	addAllowlistEntry,
 	isEmailAllowed,
 	loadAllowlist,
-	removeAllowlistEntry,
 	setAllowlistPath,
 } from "../auth/allowlist";
+import { addOrUpdateRosterUser } from "../auth/roster";
 import {
 	cookieFrom,
 	createAdvantageScopeDist,
@@ -28,8 +28,8 @@ describe("session login and ownership", () => {
 			expect(response.headers.get("location")).toBe("/u/alice/");
 
 			const userCount = app.storage.db
-				.query("SELECT COUNT(*) AS count FROM user")
-				.get() as { count: number };
+				.query("SELECT COUNT(*) AS count FROM user WHERE email = ?")
+				.get("alice@test.local") as { count: number };
 			const workspaceCount = app.storage.db
 				.query("SELECT COUNT(*) AS count FROM workspaces")
 				.get() as {
@@ -128,10 +128,10 @@ describe("session login and ownership", () => {
 			expect(second.status).toBe(303);
 			expect(second.headers.get("location")).toBe("/u/alice/");
 
-			// Should have 1 user, 2 sessions, 1 workspace
+			// Same login → same user, one new session, one workspace.
 			const userCount = app.storage.db
-				.query("SELECT COUNT(*) AS count FROM user")
-				.get() as { count: number };
+				.query("SELECT COUNT(*) AS count FROM user WHERE email = ?")
+				.get("alice@test.local") as { count: number };
 			const sessionCount = app.storage.db
 				.query("SELECT COUNT(*) AS count FROM session")
 				.get() as {
@@ -279,14 +279,13 @@ describe("bootstrap admin (CODERUNNER_ADMIN_EMAIL)", () => {
 		);
 	});
 
-	test("startup seeding is idempotent, promotes existing students, leaves admins and Auth0 users", async () => {
+	test("startup provisions admin roster rows, promotes students, leaves admins and Auth0 users", async () => {
 		const root = await mkdtemp(join(tmpdir(), "frc-bootstrap-"));
 		try {
 			const catalogDir = await createCatalogDir(root);
 			const webDistDir = await createWebDist(root);
 			const advantageScopeDistDir = await createAdvantageScopeDist(root);
 			const dataDir = join(root, "data");
-			const allowlistPath = join(dataDir, "allowlist.json");
 			const baseOptions = {
 				dataDir,
 				catalogDir,
@@ -295,64 +294,39 @@ describe("bootstrap admin (CODERUNNER_ADMIN_EMAIL)", () => {
 				sessionSecret: "test-session-secret",
 				baseUrl: "http://localhost:4000",
 				containerAutoStart: false,
+				catalogRepo: null,
+				adminUsernames: [],
 				adminEmails: ["coach@team.org", "boss@team.org", "lead@team.org"],
 			};
 
-			// First startup: both admin emails are seeded into the allowlist.
+			// First startup: admin emails become roster rows, not JSON entries.
 			const first = await createApp(baseOptions);
-			const afterFirst = JSON.parse(await readFile(allowlistPath, "utf8")) as {
-				emails: string[];
-			};
-			expect(afterFirst.emails).toEqual([
+			expect(await exists(join(dataDir, "allowlist.json"))).toBe(false);
+			const seeded = first.storage.db
+				.query("SELECT email, role FROM user ORDER BY email")
+				.all() as Array<{ email: string; role: string }>;
+			expect(seeded.map((u) => u.email)).toEqual([
 				"boss@team.org",
 				"coach@team.org",
 				"lead@team.org",
 			]);
+			expect(seeded.every((u) => u.role === "admin")).toBe(true);
 
-			// Simulate accounts that already exist: a coach who signed in as a
-			// student before the env was set (with the mixed-case email the OAuth
-			// provider returned — promotion must match case-insensitively), and a
-			// boss who is already an admin.
+			// Simulate an older OAuth row: mixed-case address, demoted before the
+			// env var was set. Another row is already an admin. The third has an
+			// Auth0 account, so Auth0's role claim must win.
 			const staleAdminTimestamp = "2020-01-01T00:00:00.000Z";
-			const insertUser = first.storage.db.query(
-				"INSERT INTO user (id, name, email, emailVerified, image, createdAt, updatedAt, role, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			);
-			insertUser.run(
-				"userCoachAAAAAAAAAAA",
-				"Coach",
-				"Coach@Team.org",
-				0,
-				null,
-				staleAdminTimestamp,
-				staleAdminTimestamp,
-				"student",
-				"coach",
-			);
-			insertUser.run(
-				"userBossBBBBBBBBBBBB",
-				"Boss",
-				"boss@team.org",
-				0,
-				null,
-				staleAdminTimestamp,
-				staleAdminTimestamp,
-				"admin",
-				"boss",
-			);
-			// An Auth0 student holding an admin address. Auth0 sets the role at
-			// every sign-in (admin only for a verified address), so startup must
-			// not promote it: the address may be an unverified self-sign-up.
-			insertUser.run(
-				"userLeadCCCCCCCCCCCC",
-				"Lead",
-				"lead@team.org",
-				0,
-				null,
-				staleAdminTimestamp,
-				staleAdminTimestamp,
-				"student",
-				"lead",
-			);
+			first.storage.db
+				.query(
+					"UPDATE user SET email = ?, role = 'student', updatedAt = ? WHERE email = ?",
+				)
+				.run("Coach@Team.org", staleAdminTimestamp, "coach@team.org");
+			first.storage.db
+				.query("UPDATE user SET updatedAt = ? WHERE email = ?")
+				.run(staleAdminTimestamp, "boss@team.org");
+			const lead = first.storage.db
+				.query("SELECT id FROM user WHERE email = ?")
+				.get("lead@team.org") as { id: string };
 			first.storage.db
 				.query(
 					"INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
@@ -361,42 +335,40 @@ describe("bootstrap admin (CODERUNNER_ADMIN_EMAIL)", () => {
 					"acctLeadCCCCCCCCCCCC",
 					"auth0|lead",
 					"auth0",
-					"userLeadCCCCCCCCCCCC",
+					lead.id,
 					staleAdminTimestamp,
 					staleAdminTimestamp,
 				);
+			first.storage.db
+				.query("UPDATE user SET role = 'student' WHERE id = ?")
+				.run(lead.id);
 			first.close();
 
-			// Second startup on the same data dir: idempotent allowlist, promotes the
-			// existing student, and leaves the existing admin row untouched.
+			// Second startup: no duplicates, the student is promoted, the existing
+			// admin row is untouched, and the Auth0 row keeps its own role.
 			const second = await createApp(baseOptions);
 			try {
-				const afterSecond = JSON.parse(
-					await readFile(allowlistPath, "utf8"),
-				) as { emails: string[] };
-				expect(afterSecond.emails).toEqual([
-					"boss@team.org",
-					"coach@team.org",
-					"lead@team.org",
-				]);
+				const rows = second.storage.db
+					.query("SELECT email, role, updatedAt FROM user ORDER BY email")
+					.all() as Array<{
+					email: string;
+					role: string;
+					updatedAt: string;
+				}>;
+				expect(rows).toHaveLength(3);
 
-				const coach = second.storage.db
-					.query("SELECT role, updatedAt FROM user WHERE id = ?")
-					.get("userCoachAAAAAAAAAAA") as { role: string; updatedAt: string };
-				expect(coach.role).toBe("admin");
-				expect(coach.updatedAt).not.toBe(staleAdminTimestamp);
+				const coach = rows.find(
+					(u) => u.email.toLowerCase() === "coach@team.org",
+				);
+				expect(coach?.role).toBe("admin");
+				expect(coach?.updatedAt).not.toBe(staleAdminTimestamp);
 
-				const boss = second.storage.db
-					.query("SELECT role, updatedAt FROM user WHERE email = ?")
-					.get("boss@team.org") as { role: string; updatedAt: string };
-				expect(boss.role).toBe("admin");
-				// The already-admin row is not rewritten.
-				expect(boss.updatedAt).toBe(staleAdminTimestamp);
+				const boss = rows.find((u) => u.email === "boss@team.org");
+				expect(boss?.role).toBe("admin");
+				expect(boss?.updatedAt).toBe(staleAdminTimestamp);
 
-				const lead = second.storage.db
-					.query("SELECT role FROM user WHERE email = ?")
-					.get("lead@team.org") as { role: string };
-				expect(lead.role).toBe("student");
+				const auth0Lead = rows.find((u) => u.email === "lead@team.org");
+				expect(auth0Lead?.role).toBe("student");
 			} finally {
 				second.close();
 			}
@@ -543,11 +515,21 @@ function authRequest(path: string, body: unknown, cookie?: string): Request {
 
 describe("username/password authentication", () => {
 	const PASSWORD = "correct horse battery staple";
+	// Username/password is deliberately isolated from OAuth in these tests.
+	const passwordOptions = {
+		usernamePasswordAuth: true,
+		githubClientId: "",
+		githubClientSecret: "",
+		googleClientId: "",
+		googleClientSecret: "",
+		auth0Domain: "",
+		auth0ClientId: "",
+		auth0ClientSecret: "",
+	};
 
-	test("is off unless CODERUNNER_USERNAME_PASSWORD is enabled", async () => {
+	test("public sign-up is disabled and username routes are off when the feature is off", async () => {
 		await withApp(
 			async (app) => {
-				await addAllowlistEntry("username", "student");
 				const response = await app.fetch(
 					authRequest("/api/auth/sign-up/email", {
 						name: "Student",
@@ -556,7 +538,19 @@ describe("username/password authentication", () => {
 						password: PASSWORD,
 					}),
 				);
-				expect(response.ok).toBe(false);
+				expect(response.status).toBe(403);
+				expect(await response.text()).toContain(
+					"Accounts are created by your coach",
+				);
+
+				const usernameSignIn = await app.fetch(
+					authRequest("/api/auth/sign-in/username", {
+						username: "student",
+						password: PASSWORD,
+					}),
+				);
+				expect(usernameSignIn.status).toBe(404);
+
 				const users = app.storage.db
 					.query("SELECT COUNT(*) AS count FROM user")
 					.get() as { count: number };
@@ -566,127 +560,364 @@ describe("username/password authentication", () => {
 		);
 	});
 
-	test("sign-up creates a user, workspace, and a scrypt password hash (never plaintext)", async () => {
+	test("an email-only scaffold gets a workspace on first email sign-in", async () => {
+		await withApp(async (app) => {
+			await addAllowlistEntry("domain", "example.com");
+			const scaffold = await addOrUpdateRosterUser(app.storage, {
+				email: "student@example.com",
+				displayName: "Student",
+			});
+			const signIn = await app.fetch(
+				authRequest("/api/auth/sign-in/email", {
+					email: "student@example.com",
+					password: scaffold.temporaryPassword!,
+				}),
+			);
+			expect(signIn.status).toBe(200);
+
+			const workspace = app.storage.db
+				.query("SELECT slug FROM workspaces WHERE user_id = ?")
+				.get(scaffold.user.id) as { slug: string } | null;
+			expect(workspace?.slug).toBe("student");
+		}, passwordOptions);
+	});
+
+	test("a coach scaffold signs in with a scrypt-hashed temporary password, then must rotate it", async () => {
 		const { verifyPassword } = await import("better-auth/crypto");
-		await withApp(
-			async (app) => {
-				await addAllowlistEntry("username", "student");
-				const response = await app.fetch(
-					authRequest("/api/auth/sign-up/email", {
-						name: "Student",
-						username: "student",
-						email: "attacker@example.com",
-						password: PASSWORD,
-					}),
-				);
-				expect(response.status).toBe(200);
-				expect(response.headers.get("set-cookie")).toContain(
-					"coderunner_session=",
+		await withApp(async (app) => {
+			// No private email is required: a reserved address keeps the
+			// username row unambiguous until the student adds a real one.
+			await addAllowlistEntry("domain", "students.coderunner.invalid");
+			const scaffold = await addOrUpdateRosterUser(app.storage, {
+				username: "student",
+				displayName: "Student",
+			});
+			expect(scaffold.created).toBe(true);
+			expect(scaffold.temporaryPassword).toBeTruthy();
+			const temporaryPassword = scaffold.temporaryPassword!;
+
+			const user = app.storage.db
+				.query(
+					"SELECT id, email, username, role, slug, mustChangePassword FROM user WHERE username = ?",
+				)
+				.get("student") as {
+				id: string;
+				email: string;
+				username: string;
+				role: string;
+				slug: string;
+				mustChangePassword: number;
+			};
+			expect(user.email).toBe("student@students.coderunner.invalid");
+			expect(user.username).toBe("student");
+			expect(user.role).toBe("student");
+			expect(user.slug).toBe("student");
+			expect(user.mustChangePassword).toBe(1);
+
+			const account = app.storage.db
+				.query("SELECT providerId, password FROM account WHERE userId = ?")
+				.get(user.id) as { providerId: string; password: string };
+			expect(account.providerId).toBe("credential");
+			// `<16-byte hex salt>:<64-byte hex key>`, with no plaintext copy.
+			expect(account.password).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/u);
+			expect(account.password).not.toContain(temporaryPassword);
+			expect(
+				await verifyPassword({
+					hash: account.password,
+					password: temporaryPassword,
+				}),
+			).toBe(true);
+
+			const signIn = await app.fetch(
+				authRequest("/api/auth/sign-in/username", {
+					username: "student",
+					password: temporaryPassword,
+				}),
+			);
+			expect(signIn.status).toBe(200);
+			const cookie = cookieFrom(signIn);
+
+			const workspace = app.storage.db
+				.query("SELECT slug FROM workspaces WHERE user_id = ?")
+				.get(user.id) as { slug: string } | null;
+			expect(workspace?.slug).toBe("student");
+
+			// The rest of the site stays locked until the password rotates.
+			const blocked = await app.fetch(
+				new Request("http://localhost/u/student/", { headers: { cookie } }),
+			);
+			expect(blocked.status).toBe(403);
+			expect((await blocked.json()).mustChangePassword).toBe(true);
+
+			// Reaching the account page already proved who they are, so the
+			// forced-reset endpoint takes the new password twice and not the
+			// temporary one again.
+			const mismatch = await app.fetch(
+				authRequest(
+					"/api/auth/roster/replace-temporary-password",
+					{ newPassword: PASSWORD, confirmPassword: `${PASSWORD}!` },
+					cookie,
+				),
+			);
+			expect(mismatch.status).toBe(400);
+			expect((await mismatch.json()).message).toContain("don't match");
+
+			const change = await app.fetch(
+				authRequest(
+					"/api/auth/roster/replace-temporary-password",
+					{ newPassword: PASSWORD, confirmPassword: PASSWORD },
+					cookie,
+				),
+			);
+			expect(change.status).toBe(200);
+
+			const rotated = app.storage.db
+				.query("SELECT mustChangePassword FROM user WHERE id = ?")
+				.get(user.id) as { mustChangePassword: number };
+			expect(rotated.mustChangePassword).toBe(0);
+			const rotatedHash = app.storage.db
+				.query("SELECT password FROM account WHERE userId = ?")
+				.get(user.id) as { password: string };
+			expect(
+				await verifyPassword({
+					hash: rotatedHash.password,
+					password: PASSWORD,
+				}),
+			).toBe(true);
+
+			const unlocked = await app.fetch(
+				new Request("http://localhost/u/student/", {
+					headers: { cookie: cookieFrom(change) },
+				}),
+			);
+			expect(unlocked.status).toBe(200);
+		}, passwordOptions);
+	});
+
+	test("the email address is roster-owned and cannot be changed from the account page", async () => {
+		await withApp(async (app) => {
+			const scaffold = await addOrUpdateRosterUser(app.storage, {
+				username: "student",
+			});
+			const signIn = await app.fetch(
+				authRequest("/api/auth/sign-in/username", {
+					username: "student",
+					password: scaffold.temporaryPassword!,
+				}),
+			);
+			expect(signIn.status).toBe(200);
+			const cookie = cookieFrom(signIn);
+
+			const emailChange = await app.fetch(
+				authRequest(
+					"/api/auth/change-email",
+					{ newEmail: "student@example.com" },
+					cookie,
+				),
+			);
+			expect(emailChange.status).toBe(403);
+
+			const user = app.storage.db
+				.query("SELECT email, username FROM user WHERE id = ?")
+				.get(scaffold.user.id) as { email: string; username: string };
+			expect(user.email).toBe("student@students.coderunner.invalid");
+			expect(user.username).toBe("student");
+		}, passwordOptions);
+	});
+
+	test("sign-in methods can only be removed when another one remains", async () => {
+		await withApp(async (app) => {
+			const scaffold = await addOrUpdateRosterUser(app.storage, {
+				username: "student",
+			});
+			const signIn = await app.fetch(
+				authRequest("/api/auth/sign-in/username", {
+					username: "student",
+					password: scaffold.temporaryPassword!,
+				}),
+			);
+			const cookie = cookieFrom(signIn);
+			const change = await app.fetch(
+				authRequest(
+					"/api/auth/change-password",
+					{
+						currentPassword: scaffold.temporaryPassword!,
+						newPassword: PASSWORD,
+					},
+					cookie,
+				),
+			);
+			expect(change.status).toBe(200);
+
+			const removeWithoutFallback = await app.fetch(
+				authRequest("/api/auth/roster/remove-password", {}, cookie),
+			);
+			expect(removeWithoutFallback.status).toBe(400);
+
+			const now = new Date().toISOString();
+			app.storage.db
+				.query(
+					"INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+				)
+				.run(
+					"acctGoogleAAAAAAAAAAAA",
+					"google-123",
+					"google",
+					scaffold.user.id,
+					now,
+					now,
 				);
 
-				const user = app.storage.db
+			const unlinkGoogle = await app.fetch(
+				authRequest(
+					"/api/auth/unlink-account",
+					{ providerId: "google" },
+					cookie,
+				),
+			);
+			expect(unlinkGoogle.status).toBe(200);
+			const afterUnlink = app.storage.db
+				.query("SELECT COUNT(*) AS count FROM account WHERE userId = ?")
+				.get(scaffold.user.id) as { count: number };
+			expect(afterUnlink.count).toBe(1);
+
+			app.storage.db
+				.query(
+					"INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+				)
+				.run(
+					"acctGoogleBBBBBBBBBBBB",
+					"google-123",
+					"google",
+					scaffold.user.id,
+					now,
+					now,
+				);
+			const removeWithFallback = await app.fetch(
+				authRequest("/api/auth/roster/remove-password", {}, cookie),
+			);
+			expect(removeWithFallback.status).toBe(200);
+			const user = app.storage.db
+				.query("SELECT username FROM user WHERE id = ?")
+				.get(scaffold.user.id) as { username: string | null };
+			expect(user.username).toBeNull();
+			const credential = app.storage.db
+				.query(
+					"SELECT COUNT(*) AS count FROM account WHERE userId = ? AND providerId = 'credential'",
+				)
+				.get(scaffold.user.id) as { count: number };
+			expect(credential.count).toBe(0);
+
+			const unlinkLast = await app.fetch(
+				authRequest(
+					"/api/auth/unlink-account",
+					{ providerId: "google" },
+					cookie,
+				),
+			);
+			expect(unlinkLast.status).toBe(400);
+		}, passwordOptions);
+	});
+
+	test("a password can be added once to an account without one", async () => {
+		await withApp(async (app) => {
+			const response = await login(app, "oauth", {
+				email: "addpassword@test.local",
+			});
+			const cookie = cookieFrom(response);
+			const user = app.storage.db
+				.query("SELECT id FROM user WHERE email = ?")
+				.get("addpassword@test.local") as { id: string };
+
+			const set = await app.fetch(
+				authRequest(
+					"/api/auth/roster/set-password",
+					{ newPassword: PASSWORD },
+					cookie,
+				),
+			);
+			expect(set.status).toBe(200);
+			const credential = app.storage.db
+				.query(
+					"SELECT password FROM account WHERE userId = ? AND providerId = 'credential'",
+				)
+				.get(user.id) as { password: string } | null;
+			expect(credential?.password).toBeTruthy();
+
+			const again = await app.fetch(
+				authRequest(
+					"/api/auth/roster/set-password",
+					{ newPassword: PASSWORD },
+					cookie,
+				),
+			);
+			expect(again.status).toBe(409);
+		}, passwordOptions);
+	});
+
+	test("OAuth-only users can disconnect one of several providers", async () => {
+		await withApp(async (app) => {
+			const response = await login(app, "oauth", {
+				email: "oauth@test.local",
+			});
+			const cookie = cookieFrom(response);
+			const user = app.storage.db
+				.query("SELECT id FROM user WHERE email = ?")
+				.get("oauth@test.local") as { id: string };
+			const now = new Date().toISOString();
+			for (const [id, provider] of [
+				["acctGoogleMulti", "google"],
+				["acctGithubMulti", "github"],
+			] as const) {
+				app.storage.db
 					.query(
-						"SELECT id, email, username, role, slug FROM user WHERE username = ?",
+						"INSERT INTO account (id, accountId, providerId, userId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
 					)
-					.get("student") as {
-					id: string;
-					email: string;
-					username: string;
-					role: string;
-					slug: string;
-				};
-				expect(user.email).toBe("student@students.coderunner.invalid");
-				expect(user.username).toBe("student");
-				expect(user.role).toBe("student");
-				expect(user.slug).toBe("student");
+					.run(id, `${provider}-123`, provider, user.id, now, now);
+			}
 
-				const workspace = app.storage.db
-					.query("SELECT slug FROM workspaces WHERE user_id = ?")
-					.get(user.id) as { slug: string } | null;
-				expect(workspace?.slug).toBe("student");
+			const unlinkGoogle = await app.fetch(
+				authRequest(
+					"/api/auth/unlink-account",
+					{ providerId: "google" },
+					cookie,
+				),
+			);
+			expect(unlinkGoogle.status).toBe(200);
 
-				const account = app.storage.db
-					.query("SELECT providerId, password FROM account WHERE userId = ?")
-					.get(user.id) as { providerId: string; password: string };
-				expect(account.providerId).toBe("credential");
-
-				// `<16-byte hex salt>:<64-byte hex key>`, with no plaintext copy.
-				expect(account.password).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/u);
-				expect(account.password).not.toContain(PASSWORD);
-				expect(
-					await verifyPassword({ hash: account.password, password: PASSWORD }),
-				).toBe(true);
-				expect(
-					await verifyPassword({ hash: account.password, password: "wrong" }),
-				).toBe(false);
-			},
-			{
-				usernamePasswordAuth: true,
-				githubClientId: "",
-				githubClientSecret: "",
-				googleClientId: "",
-				googleClientSecret: "",
-				auth0Domain: "",
-				auth0ClientId: "",
-				auth0ClientSecret: "",
-			},
-		);
+			const unlinkLast = await app.fetch(
+				authRequest(
+					"/api/auth/unlink-account",
+					{ providerId: "github" },
+					cookie,
+				),
+			);
+			expect(unlinkLast.status).toBe(400);
+			expect((await unlinkLast.json()).message).toContain(
+				"another sign-in method",
+			);
+		});
 	});
 
-	test("rejects sign-up for a username that is not on the allowlist", async () => {
-		await withApp(
-			async (app) => {
-				const response = await app.fetch(
-					authRequest("/api/auth/sign-up/email", {
-						name: "Stranger",
-						username: "stranger",
-						email: "stranger@students.coderunner.invalid",
-						password: PASSWORD,
-					}),
-				);
-				expect(response.status).toBe(403);
-				const users = app.storage.db
-					.query("SELECT COUNT(*) AS count FROM user")
-					.get() as { count: number };
-				expect(users.count).toBe(0);
-			},
-			{ usernamePasswordAuth: true },
-		);
-	});
+	test("removing a roster row blocks password sign-in", async () => {
+		await withApp(async (app) => {
+			const scaffold = await addOrUpdateRosterUser(app.storage, {
+				username: "student",
+			});
+			const { deletePendingRosterUser } = await import("../auth/roster");
+			deletePendingRosterUser(app.storage, scaffold.user.id);
 
-	test("a removed allowlist entry blocks sign-in and revokes the new session", async () => {
-		await withApp(
-			async (app) => {
-				await addAllowlistEntry("username", "student");
-				const signUp = await app.fetch(
-					authRequest("/api/auth/sign-up/email", {
-						name: "Student",
-						username: "student",
-						email: "student@students.coderunner.invalid",
-						password: PASSWORD,
-					}),
-				);
-				expect(signUp.status).toBe(200);
-
-				// Drop the auto sign-in session so the only session we observe is
-				// the one the sign-in attempt below creates (then revokes).
-				app.storage.db.exec("DELETE FROM session");
-				await removeAllowlistEntry("username", "student");
-
-				const signIn = await app.fetch(
-					authRequest("/api/auth/sign-in/username", {
-						username: "student",
-						password: PASSWORD,
-					}),
-				);
-				expect(signIn.status).toBe(403);
-
-				const sessions = app.storage.db
-					.query("SELECT COUNT(*) AS count FROM session")
-					.get() as { count: number };
-				expect(sessions.count).toBe(0);
-			},
-			{ usernamePasswordAuth: true },
-		);
+			const signIn = await app.fetch(
+				authRequest("/api/auth/sign-in/username", {
+					username: "student",
+					password: scaffold.temporaryPassword!,
+				}),
+			);
+			expect(signIn.status).toBe(403);
+			const sessions = app.storage.db
+				.query("SELECT COUNT(*) AS count FROM session")
+				.get() as { count: number };
+			expect(sessions.count).toBe(0);
+		}, passwordOptions);
 	});
 });

@@ -7,7 +7,6 @@ type Tab =
 	| "workspaces"
 	| "users"
 	| "classrooms"
-	| "allowlist"
 	| "audit-log";
 
 const tabs: Array<{ id: Tab; label: string }> = [
@@ -16,7 +15,6 @@ const tabs: Array<{ id: Tab; label: string }> = [
 	{ id: "workspaces", label: "Workspaces" },
 	{ id: "users", label: "Users" },
 	{ id: "classrooms", label: "Classrooms" },
-	{ id: "allowlist", label: "Allowlist" },
 	{ id: "audit-log", label: "Audit Log" },
 ];
 

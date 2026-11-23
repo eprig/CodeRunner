@@ -5,9 +5,9 @@
  * Google are Better Auth social providers; Auth0 goes through the genericOAuth
  * plugin (decision 044).
  *
- * OAuth providers remain separate from username/password accounts. Account
- * linking is intentionally disabled so each sign-in method has its own
- * allowlist identity.
+ * OAuth providers can be linked to the same Better Auth user as a username or
+ * password login when the provider email matches the roster row. Account
+ * linking is configured in auth.ts; Auth0's role claim remains authoritative.
  */
 import type { BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";

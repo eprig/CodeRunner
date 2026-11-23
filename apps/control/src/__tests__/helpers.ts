@@ -197,6 +197,19 @@ export async function withApp<T>(
 		baseUrl: "http://localhost:4000",
 		idleStopMinutes: 30,
 		containerAutoStart: false,
+		// Tests must not inherit the operator's local .env (a remote lesson repo
+		// or bootstrap admin would make results machine-specific).
+		catalogRepo: null,
+		adminEmails: [],
+		adminUsernames: [],
+		githubClientId: "",
+		githubClientSecret: "",
+		googleClientId: "",
+		googleClientSecret: "",
+		auth0Domain: "",
+		auth0ClientId: "",
+		auth0ClientSecret: "",
+		auth0Audience: "",
 		portAvailable: options.dockerRunner ? async () => true : undefined,
 		...options,
 	});

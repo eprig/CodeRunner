@@ -43,20 +43,18 @@ interface OAuthButtonProps {
 function OAuthButton({ provider, disabled, onClick }: OAuthButtonProps) {
 	const { label, Icon, className } = PROVIDER_BUTTONS[provider];
 	return (
-		<div className="rounded-lg border border-border bg-card p-2">
-			<button
-				type="button"
-				onClick={onClick}
-				disabled={disabled}
-				className={cn(
-					"flex h-11 w-full items-center justify-center gap-3 rounded-md border px-4 text-[13px] font-semibold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-45",
-					className,
-				)}
-			>
-				<Icon className="size-[18px] shrink-0" />
-				{label}
-			</button>
-		</div>
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={cn(
+				"flex h-11 w-full items-center justify-center gap-3 rounded-md border px-4 text-[13px] font-semibold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-45",
+				className,
+			)}
+		>
+			<Icon className="size-4.5 shrink-0" />
+			{label}
+		</button>
 	);
 }
 
@@ -68,10 +66,7 @@ const ROSTER_MESSAGE =
 
 const INVALID_CREDENTIALS_MESSAGE = "Incorrect username or password.";
 
-/** The server replaces this with a reserved address derived from the username. */
-const PLACEHOLDER_EMAIL_DOMAIN = "students.coderunner.invalid";
-
-function friendlyAuthError(message: string | undefined, signUp: boolean) {
+function friendlyAuthError(message: string | undefined) {
 	const detail = message?.trim() ?? "";
 	const lower = detail.toLowerCase();
 
@@ -97,9 +92,7 @@ function friendlyAuthError(message: string | undefined, signUp: boolean) {
 	if (detail.length > 0) {
 		return detail;
 	}
-	return signUp
-		? "Couldn't create your account. Please try again."
-		: "Couldn't sign in. Please try again.";
+	return "Couldn't sign in. Please try again.";
 }
 
 export function LoginPage() {
@@ -109,7 +102,6 @@ export function LoginPage() {
 	const [usernamePasswordEnabled, setUsernamePasswordEnabled] = useState(false);
 	const [providersError, setProvidersError] = useState<string | null>(null);
 	const [signInError, setSignInError] = useState<string | null>(null);
-	const [signUpMode, setSignUpMode] = useState(false);
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 
@@ -191,43 +183,29 @@ export function LoginPage() {
 		event.preventDefault();
 		setLoading(true);
 		setSignInError(null);
-		const normalizedUsername = username.trim().toLowerCase();
+		const identifier = username.trim().toLowerCase();
 		try {
-			const result = signUpMode
-				? await authClient.signUp.email({
-						username: normalizedUsername,
-						name: normalizedUsername,
-						// Better Auth requires an email field. The server discards
-						// this value and derives the reserved address itself.
-						email: `${normalizedUsername}@${PLACEHOLDER_EMAIL_DOMAIN}`,
-						password,
-					})
-				: await authClient.signIn.username({
-						username: normalizedUsername,
-						password,
-					});
+			const result = identifier.includes("@")
+				? await authClient.signIn.email({ email: identifier, password })
+				: await authClient.signIn.username({ username: identifier, password });
 
 			if (result.error) {
-				setSignInError(friendlyAuthError(result.error.message, signUpMode));
+				setSignInError(friendlyAuthError(result.error.message));
 				return;
 			}
 
-			// Let the server route "/" decide where this user belongs.
+			// Let the server route "/" decide where this user belongs. A coach-set
+			// temporary password redirects on to the forced change screen.
 			window.location.assign("/");
 		} catch (error) {
 			setSignInError(
 				error instanceof Error
-					? friendlyAuthError(error.message, signUpMode)
+					? friendlyAuthError(error.message)
 					: "Something went wrong. Please try again.",
 			);
 		} finally {
 			setLoading(false);
 		}
-	}
-
-	function toggleUsernamePasswordMode() {
-		setSignUpMode((current) => !current);
-		setSignInError(null);
 	}
 
 	return (
@@ -291,11 +269,11 @@ export function LoginPage() {
 								name="username"
 								value={username}
 								onChange={(event) => setUsername(event.target.value)}
-								placeholder="Username"
+								placeholder="Username or email"
 								autoComplete="username"
 								autoCapitalize="none"
 								spellCheck={false}
-								aria-label="Username"
+								aria-label="Username or email"
 								minLength={3}
 								maxLength={30}
 								required
@@ -306,31 +284,18 @@ export function LoginPage() {
 								name="password"
 								value={password}
 								onChange={(event) => setPassword(event.target.value)}
-								placeholder={
-									signUpMode ? "Password (8+ characters)" : "Password"
-								}
-								autoComplete={signUpMode ? "new-password" : "current-password"}
+								placeholder="Password"
+								autoComplete="current-password"
 								aria-label="Password"
-								minLength={signUpMode ? 8 : undefined}
 								required
 								className={inputClassName}
 							/>
 							<button
 								type="submit"
 								disabled={loading}
-								className="mt-1 flex h-11 w-full items-center justify-center rounded-md border border-border bg-white/[0.06] text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/[0.11] disabled:cursor-not-allowed disabled:opacity-45"
+								className="mt-1 flex h-11 w-full items-center justify-center rounded-md border border-border bg-white/6 text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/11 disabled:cursor-not-allowed disabled:opacity-45"
 							>
-								{signUpMode ? "Create account" : "Sign in with username"}
-							</button>
-							<button
-								type="button"
-								onClick={toggleUsernamePasswordMode}
-								disabled={loading}
-								className="mt-1 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-45"
-							>
-								{signUpMode
-									? "Already have an account? Sign in"
-									: "Need an account? Create one"}
+								Sign in
 							</button>
 						</form>
 					)}
@@ -370,16 +335,16 @@ export function LoginPage() {
 					{/* Classroom guests */}
 					<a
 						href="/join"
-						className="mt-3 flex h-11 w-full items-center justify-center rounded-md border border-border text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/[0.06]"
+						className="mt-3 flex h-11 w-full items-center justify-center rounded-md border border-border text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/6"
 					>
 						Join a classroom
 					</a>
 
 					{/* Fine print */}
 					<p className="mt-6 text-[10.5px] leading-relaxed text-muted-foreground">
-						Not on the roster?{" "}
+						No account yet?{" "}
 						<span className="text-foreground/60">
-							Ask your coach for a classroom code.
+							Ask your coach to add you to the roster, or use a classroom code.
 						</span>
 					</p>
 				</div>

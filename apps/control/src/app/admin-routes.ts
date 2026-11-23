@@ -5,7 +5,24 @@ import type {
 	WorkspaceId,
 } from "@frc-coderunner/contracts";
 import { queryAuditLog, recordAuditEvent } from "../audit";
+import {
+	addAllowlistEntry,
+	getAllowlist,
+	removeAllowlistEntry,
+} from "../auth/allowlist";
 import { requireAdmin } from "../auth/middleware";
+import {
+	addOrUpdateRosterUser,
+	deletePendingRosterUser,
+	findRosterUserByEmail,
+	findRosterUserById,
+	findRosterUserByUsername,
+	isSyntheticEmail,
+	listRosterUsers,
+	RosterError,
+	setTemporaryPassword,
+	updateRosterIdentity,
+} from "../auth/roster";
 import { getLogger } from "../logging";
 import type { RunManager } from "../runs";
 import type { WorkspaceRuntimeProvider } from "../runtime";
@@ -22,6 +39,24 @@ import { apiErrorResponse, jsonResponse, notFound } from "./responses";
 import { adminStatusResponse, auditActor } from "./status";
 
 const log = getLogger("admin");
+const SELF_EDIT_MESSAGE =
+	"You can't change your own account here. Use Account settings instead.";
+
+function selfEditResponse(): Response {
+	return jsonResponse({ error: SELF_EDIT_MESSAGE }, { status: 409 });
+}
+
+/** Stop a deleted identity from being recreated by legacy JSON on next boot. */
+async function forgetLegacyIdentity(email: string, username: string | null) {
+	const current = getAllowlist();
+	let next = current;
+	if (current.emails.includes(email.toLowerCase())) {
+		next = await removeAllowlistEntry("email", email);
+	}
+	if (username && next.usernames.includes(username.toLowerCase())) {
+		await removeAllowlistEntry("username", username);
+	}
+}
 
 export type AdminRouteContext = {
 	storage: AppStorage;
@@ -259,11 +294,13 @@ export async function handleAdminRoute(
 
 	// --- User management endpoints ---
 	if (url.pathname === "/admin/users" && request.method === "GET") {
-		const users = storage.db
+		const rows = storage.db
 			.query(
 				`
         SELECT
-          u.id, u.name, u.email, u.role, u.slug, u.classroomId, u.createdAt, u.updatedAt,
+          u.id, u.name, u.email, u.username, u.role, u.slug, u.classroomId,
+          u.createdAt, u.updatedAt, u.mustChangePassword,
+          (SELECT COUNT(*) FROM account a WHERE a.userId = u.id) AS accountCount,
           w.id AS workspaceId, w.last_accessed_at AS lastSeenAt
         FROM user u
         LEFT JOIN workspaces w ON w.user_id = u.id
@@ -274,15 +311,129 @@ export async function handleAdminRoute(
 			id: string;
 			name: string;
 			email: string;
+			username: string | null;
 			role: string | null;
 			slug: string | null;
 			classroomId: string | null;
 			createdAt: string;
 			updatedAt: string;
+			mustChangePassword: number | boolean | null;
+			accountCount: number;
 			workspaceId: string | null;
 			lastSeenAt: string | null;
 		}>;
-		return jsonResponse({ ok: true, users });
+		const users = rows.map((row) => {
+			const mustChangePassword =
+				row.mustChangePassword === true || row.mustChangePassword === 1;
+			const enrolled =
+				Boolean(row.lastSeenAt) || Boolean(row.slug && row.workspaceId);
+			return {
+				...row,
+				mustChangePassword,
+				// A forced change still gates the site, but an established user
+				// isn't "pending" onboarding — their badge says why they're gated.
+				passwordReset: mustChangePassword && enrolled,
+				pending: mustChangePassword || Number(row.accountCount ?? 0) === 0,
+			};
+		});
+		return jsonResponse({
+			ok: true,
+			users,
+			// Lets the Admin UI hide actions on the signed-in admin's own row.
+			currentUserId: adminResult.user.id,
+		});
+	}
+
+	const passwordResetMatch = /^\/admin\/users\/([^/]+)\/reset-password$/.exec(
+		url.pathname,
+	);
+	if (passwordResetMatch && request.method === "POST") {
+		const userId = passwordResetMatch[1] ?? "";
+		if (userId === adminResult.user.id) return selfEditResponse();
+		const user = storage.db
+			.query(
+				"SELECT id, name, email, username, classroomId FROM user WHERE id = ?",
+			)
+			.get(userId) as {
+			id: string;
+			name: string;
+			email: string;
+			username: string | null;
+			classroomId: string | null;
+		} | null;
+		if (!user || user.classroomId) {
+			return jsonResponse({ error: "User not found." }, { status: 404 });
+		}
+		try {
+			const temporaryPassword = await setTemporaryPassword(storage, userId);
+			recordAuditEvent(storage, {
+				actor: auditActor(adminResult),
+				action: "user.password-reset",
+				target: { kind: "user", id: userId },
+			});
+			return jsonResponse({ ok: true, userId, temporaryPassword });
+		} catch (error) {
+			return apiErrorResponse(error, "Couldn't reset that password.");
+		}
+	}
+
+	const identityMatch = /^\/admin\/users\/([^/]+)\/identity$/.exec(
+		url.pathname,
+	);
+	if (identityMatch && request.method === "POST") {
+		const userId = identityMatch[1] ?? "";
+		if (userId === adminResult.user.id) return selfEditResponse();
+		let body: { username?: unknown; email?: unknown; displayName?: unknown };
+		try {
+			body = (await request.json()) as typeof body;
+		} catch {
+			return jsonResponse({ error: "Invalid JSON body." }, { status: 400 });
+		}
+		const input: {
+			username?: string | null;
+			email?: string | null;
+			displayName?: string | null;
+		} = {};
+		if (body.username !== undefined) {
+			if (typeof body.username !== "string" && body.username !== null) {
+				return jsonResponse({ error: "Invalid username." }, { status: 400 });
+			}
+			input.username = body.username;
+		}
+		if (body.email !== undefined) {
+			if (typeof body.email !== "string" && body.email !== null) {
+				return jsonResponse({ error: "Invalid email." }, { status: 400 });
+			}
+			input.email = body.email;
+		}
+		if (body.displayName !== undefined) {
+			if (typeof body.displayName !== "string" && body.displayName !== null) {
+				return jsonResponse(
+					{ error: "Invalid display name." },
+					{ status: 400 },
+				);
+			}
+			input.displayName = body.displayName;
+		}
+		try {
+			const user = await updateRosterIdentity(storage, userId, input);
+			recordAuditEvent(storage, {
+				actor: auditActor(adminResult),
+				action: "user.update-identity",
+				target: { kind: "user", id: userId },
+				metadata: {
+					name: user.name,
+					username: user.username,
+					email: user.email,
+				},
+			});
+			return jsonResponse({ ok: true, user });
+		} catch (error) {
+			if (error instanceof RosterError) {
+				return jsonResponse({ error: error.message }, { status: error.status });
+			}
+			return apiErrorResponse(error, "Couldn't update that user.");
+		}
 	}
 
 	const userActionMatch = /^\/admin\/users\/([^/]+)\/(promote|demote)$/.exec(
@@ -290,6 +441,7 @@ export async function handleAdminRoute(
 	);
 	if (userActionMatch && request.method === "POST") {
 		const userId = userActionMatch[1] ?? "";
+		if (userId === adminResult.user.id) return selfEditResponse();
 		const action = userActionMatch[2] as "promote" | "demote";
 		const user = storage.db
 			.query("SELECT id, name, email, role, classroomId FROM user WHERE id = ?")
@@ -338,12 +490,14 @@ export async function handleAdminRoute(
 	const userDeleteMatch = /^\/admin\/users\/([^/]+)$/.exec(url.pathname);
 	if (userDeleteMatch && request.method === "DELETE") {
 		const userId = userDeleteMatch[1] ?? "";
+		if (userId === adminResult.user.id) return selfEditResponse();
 		const user = storage.db
-			.query("SELECT id, name, email, role FROM user WHERE id = ?")
+			.query("SELECT id, name, email, username, role FROM user WHERE id = ?")
 			.get(userId) as {
 			id: string;
 			name: string;
 			email: string;
+			username: string | null;
 			role: string | null;
 		} | null;
 		if (!user) {
@@ -362,6 +516,7 @@ export async function handleAdminRoute(
 		}
 
 		await deleteUserAndWorkspace(ctx, userId);
+		await forgetLegacyIdentity(user.email, user.username);
 
 		recordAuditEvent(storage, {
 			actor: auditActor(adminResult),
@@ -373,73 +528,166 @@ export async function handleAdminRoute(
 		return jsonResponse({ ok: true, userId });
 	}
 
-	// --- Allowlist endpoints ---
+	// --- Roster + domain allowlist endpoints ---
+	// People live in Better Auth's `user` table; only domains remain in JSON.
 	if (url.pathname === "/admin/allowlist" && request.method === "GET") {
-		const { getAllowlist } = await import("../auth/allowlist");
-		return jsonResponse({ ok: true, ...getAllowlist() });
+		return jsonResponse({
+			ok: true,
+			users: listRosterUsers(storage.db),
+			domains: getAllowlist().domains,
+		});
 	}
 
 	if (url.pathname === "/admin/allowlist" && request.method === "POST") {
-		const { addAllowlistEntry } = await import("../auth/allowlist");
-		let body: { kind?: string; value?: string };
+		let body: {
+			kind?: string;
+			value?: string;
+			username?: string;
+			email?: string;
+			password?: string;
+			displayName?: string;
+			createOnly?: boolean;
+		};
 		try {
-			body = (await request.json()) as { kind?: string; value?: string };
+			body = (await request.json()) as typeof body;
 		} catch {
 			return jsonResponse({ error: "Invalid JSON body." }, { status: 400 });
 		}
-		if (
-			body.kind !== "username" &&
-			body.kind !== "email" &&
-			body.kind !== "domain"
-		) {
+
+		// Domain rules are still file-backed; everything else is a user.
+		if (body.kind === "domain") {
+			if (typeof body.value !== "string" || !body.value.trim()) {
+				return jsonResponse({ error: "value is required." }, { status: 400 });
+			}
+			try {
+				await addAllowlistEntry("domain", body.value);
+			} catch (error) {
+				return apiErrorResponse(error, "Couldn't add that domain.");
+			}
+			recordAuditEvent(storage, {
+				actor: auditActor(adminResult),
+				action: "allowlist.add",
+				target: { kind: "allowlist", id: body.value.toLowerCase() },
+				metadata: { kind: "domain" },
+			});
+			return jsonResponse({
+				ok: true,
+				domains: getAllowlist().domains,
+				users: listRosterUsers(storage.db),
+			});
+		}
+
+		const username =
+			body.username ?? (body.kind === "username" ? body.value : undefined);
+		const email =
+			body.email ?? (body.kind === "email" ? body.value : undefined);
+		if (!username?.trim() && !email?.trim()) {
 			return jsonResponse(
-				{ error: "kind must be 'username', 'email', or 'domain'." },
+				{ error: "Enter a username or an email address." },
 				{ status: 400 },
 			);
 		}
-		if (typeof body.value !== "string" || !body.value.trim()) {
-			return jsonResponse({ error: "value is required." }, { status: 400 });
+		const selfUser =
+			(username?.trim()
+				? findRosterUserByUsername(storage.db, username.trim())
+				: null) ??
+			(email?.trim() ? findRosterUserByEmail(storage.db, email.trim()) : null);
+		if (selfUser?.id === adminResult.user.id) return selfEditResponse();
+		try {
+			// Adding someone never grants admin: promote them from the Users tab
+			// once you know who they are. promoteOnly keeps existing roles intact.
+			const result = await addOrUpdateRosterUser(storage, {
+				username: username?.trim() || null,
+				email: email?.trim() || null,
+				password: body.password?.trim() || undefined,
+				displayName: body.displayName,
+				role: "student",
+				promoteOnly: true,
+				createOnly: body.createOnly === true,
+			});
+			recordAuditEvent(storage, {
+				actor: auditActor(adminResult),
+				action: "allowlist.add",
+				target: {
+					kind: "user",
+					id: result.user.id,
+				},
+				metadata: {
+					username: result.user.username,
+					email: isSyntheticEmail(result.user.email) ? null : result.user.email,
+					created: result.created,
+				},
+			});
+			return jsonResponse({
+				ok: true,
+				created: result.created,
+				user: result.user,
+				// Shown once by the admin UI. Stored only as a Better Auth hash.
+				temporaryPassword: result.temporaryPassword,
+				domains: getAllowlist().domains,
+				users: listRosterUsers(storage.db),
+			});
+		} catch (error) {
+			if (error instanceof RosterError) {
+				return jsonResponse({ error: error.message }, { status: error.status });
+			}
+			return apiErrorResponse(error, "Couldn't add that user.");
 		}
-		const result = await addAllowlistEntry(body.kind, body.value);
-		recordAuditEvent(storage, {
-			actor: auditActor(adminResult),
-			action: "allowlist.add",
-			target: { kind: "allowlist", id: body.value },
-			metadata: { kind: body.kind },
-		});
-		return jsonResponse({ ok: true, ...result });
 	}
 
 	const allowlistDeleteMatch = /^\/admin\/allowlist\/(.+)$/.exec(url.pathname);
 	if (allowlistDeleteMatch && request.method === "DELETE") {
-		const { removeAllowlistEntry, getAllowlist } = await import(
-			"../auth/allowlist"
-		);
 		const value = decodeURIComponent(allowlistDeleteMatch[1] ?? "");
-		const current = getAllowlist();
 		const requestedKind = url.searchParams.get("kind");
-		const kind =
-			requestedKind === "username" ||
-			requestedKind === "email" ||
-			requestedKind === "domain"
-				? requestedKind
-				: current.emails.includes(value.toLowerCase())
-					? "email"
-					: current.usernames.includes(value.toLowerCase())
-						? "username"
-						: "domain";
-		await removeAllowlistEntry(kind, value);
+		const current = getAllowlist();
+
+		try {
+			if (
+				requestedKind === "domain" ||
+				current.domains.includes(value.toLowerCase())
+			) {
+				await removeAllowlistEntry("domain", value);
+			} else {
+				const user =
+					(requestedKind === "user"
+						? findRosterUserById(storage.db, value)
+						: null) ??
+					(requestedKind === "user" || requestedKind === "username"
+						? findRosterUserByUsername(storage.db, value)
+						: null) ??
+					(requestedKind === "user" || requestedKind === "email"
+						? findRosterUserByEmail(storage.db, value)
+						: null) ??
+					findRosterUserByUsername(storage.db, value) ??
+					findRosterUserByEmail(storage.db, value);
+				if (!user) {
+					return jsonResponse({ error: "User not found." }, { status: 404 });
+				}
+				if (user.id === adminResult.user.id) return selfEditResponse();
+				deletePendingRosterUser(storage, user.id);
+				await forgetLegacyIdentity(user.email, user.username);
+			}
+		} catch (error) {
+			if (error instanceof RosterError) {
+				return jsonResponse({ error: error.message }, { status: error.status });
+			}
+			return apiErrorResponse(error, "Couldn't remove that entry.");
+		}
+
 		recordAuditEvent(storage, {
 			actor: auditActor(adminResult),
 			action: "allowlist.remove",
 			target: { kind: "allowlist", id: value },
-			metadata: { kind },
+			metadata: { kind: requestedKind ?? "user" },
 		});
-		const updated = getAllowlist();
-		return jsonResponse({ ok: true, ...updated });
+		return jsonResponse({
+			ok: true,
+			domains: getAllowlist().domains,
+			users: listRosterUsers(storage.db),
+		});
 	}
 
-	// --- Allowlist reload ---
+	// --- Allowlist reload (legacy domain edits from disk) ---
 	if (url.pathname === "/admin/allowlist/reload" && request.method === "POST") {
 		const { reloadAllowlist } = await import("../auth/allowlist");
 		try {

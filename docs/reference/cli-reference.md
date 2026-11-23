@@ -50,8 +50,11 @@ reasons:
 
 Example: `bun run allowlist:add coach@example.com` on a from-source checkout
 is `docker compose exec control coderunner allowlist add coach@example.com`
-in a compose deployment. Setting `CODERUNNER_ADMIN_EMAIL` before first boot
-avoids needing either form for the first admin — see
+in a compose deployment. Adding a person creates/reuses a roster row and prints
+a one-time temporary password when username/password auth is enabled; adding a
+domain only changes the file-backed domain rules. Setting
+`CODERUNNER_ADMIN_EMAIL` before first boot avoids needing either form for the
+first admin — see
 [OAuth credentials](../deploying/oauth-credentials.md#the-easy-path-coderunner_admin_email).
 
 ## Build
@@ -96,10 +99,10 @@ avoids needing either form for the first admin — see
 
 | Script | What it does |
 |--------|-------------|
-| `allowlist:list` | Prints the current email and domain allowlist. An empty allowlist blocks all OAuth sign-ins. |
-| `allowlist:add` | Adds an email address or domain to the allowlist. Usage: `bun run allowlist:add coach@example.com` or `bun run allowlist:add example.com` (domain allows all addresses at that domain). |
-| `allowlist:remove` | Removes an entry from the allowlist. Usage: `bun run allowlist:remove coach@example.com`. |
-| `users:list` | Lists all users in the database with their name, email, role, and workspace slug. |
+| `allowlist:list` | Prints the roster and the domain allowlist. An empty roster and empty domain list blocks all GitHub/Google sign-ins. |
+| `allowlist:add` | Creates or reuses a roster user, or adds a domain rule. Usage: `bun run allowlist:add user <username> [email]`, `bun run allowlist:add <username>`, `bun run allowlist:add <email>`, or `bun run allowlist:add <domain>`. A new/reused user gets a one-time temporary password when username/password auth is enabled. |
+| `allowlist:remove` | Removes a pending roster user or a domain rule. Usage: `bun run allowlist:remove student` or `bun run allowlist:remove frcteam.org`. Active users must be removed with the admin user-deletion flow. |
+| `users:list` | Lists all users in the database with their name, username, email, role, pending state, and workspace slug. |
 | `users:promote` | Sets a user's role to `admin`. Usage: `bun run users:promote coach@example.com`. |
 | `users:demote` | Sets a user's role to `student`. Usage: `bun run users:demote coach@example.com`. |
 

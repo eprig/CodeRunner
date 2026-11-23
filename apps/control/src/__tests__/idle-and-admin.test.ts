@@ -677,9 +677,51 @@ describe("idle lifecycle and admin controls", () => {
 				users: Array<{ email: string; role: string }>;
 			};
 			expect(body.ok).toBe(true);
-			expect(body.users.length).toBe(2);
-			const emails = body.users.map((u) => u.email).sort();
+			// Bootstrap admins from the operator's .env may also be present.
+			const emails = body.users
+				.map((u) => u.email)
+				.filter((email) => email.endsWith("@test.local"))
+				.sort();
 			expect(emails).toEqual(["alice@test.local", "bob@test.local"]);
+		});
+	});
+
+	test("admin users distinguishes onboarding pending from a password reset", async () => {
+		await withApp(async (app) => {
+			const admin = await login(app, "alice", { role: "admin" });
+			const adminCookie = cookieFrom(admin);
+			await login(app, "bob");
+			const bob = app.storage.db
+				.query("SELECT id FROM user WHERE email = ?")
+				.get("bob@test.local") as { id: string };
+
+			const reset = await app.fetch(
+				new Request(`http://localhost/admin/users/${bob.id}/reset-password`, {
+					method: "POST",
+					headers: { cookie: adminCookie },
+				}),
+			);
+			expect(reset.status).toBe(200);
+
+			const response = await app.fetch(
+				new Request("http://localhost/admin/users", {
+					headers: { cookie: adminCookie },
+				}),
+			);
+			const body = (await response.json()) as {
+				users: Array<{
+					email: string;
+					mustChangePassword: boolean;
+					passwordReset: boolean;
+					pending: boolean;
+				}>;
+			};
+			const bobRow = body.users.find((u) => u.email === "bob@test.local");
+			expect(bobRow).toMatchObject({
+				mustChangePassword: true,
+				passwordReset: true,
+				pending: true,
+			});
 		});
 	});
 
@@ -828,12 +870,12 @@ describe("idle lifecycle and admin controls", () => {
 		);
 	});
 
-	test("admin allowlist CRUD works", async () => {
+	test("admin allowlist manages roster users and domains", async () => {
 		await withApp(async (app) => {
 			const admin = await login(app, "alice", { role: "admin" });
 			const adminCookie = cookieFrom(admin);
 
-			// List — should be empty
+			// List — domains and people are separate surfaces.
 			const list = await app.fetch(
 				new Request("http://localhost/admin/allowlist", {
 					headers: { cookie: adminCookie },
@@ -842,34 +884,152 @@ describe("idle lifecycle and admin controls", () => {
 			expect(list.status).toBe(200);
 			const body = (await list.json()) as {
 				ok: boolean;
-				emails: string[];
 				domains: string[];
+				users: Array<{ id: string; email: string }>;
 			};
-			expect(body.emails).toEqual([]);
 			expect(body.domains).toEqual([]);
+			expect(body.users.some((u) => u.email === "test@example.com")).toBe(
+				false,
+			);
 
-			// Add email
+			// Add a person: the response carries the one-time temp password.
 			const add = await app.fetch(
 				new Request("http://localhost/admin/allowlist", {
 					method: "POST",
 					headers: { cookie: adminCookie, "content-type": "application/json" },
-					body: JSON.stringify({ kind: "email", value: "test@example.com" }),
+					body: JSON.stringify({ email: "test@example.com" }),
 				}),
 			);
 			expect(add.status).toBe(200);
-			const addBody = (await add.json()) as { ok: boolean; emails: string[] };
-			expect(addBody.emails).toContain("test@example.com");
+			const addBody = (await add.json()) as {
+				ok: boolean;
+				user: { id: string; email: string };
+				temporaryPassword: string;
+			};
+			expect(addBody.user.email).toBe("test@example.com");
+			expect(addBody.temporaryPassword.length).toBeGreaterThanOrEqual(8);
 
-			// Remove email
+			// Remove the pending roster row by id.
 			const del = await app.fetch(
-				new Request("http://localhost/admin/allowlist/test%40example.com", {
-					method: "DELETE",
-					headers: { cookie: adminCookie },
-				}),
+				new Request(
+					`http://localhost/admin/allowlist/${encodeURIComponent(addBody.user.id)}?kind=user`,
+					{ method: "DELETE", headers: { cookie: adminCookie } },
+				),
 			);
 			expect(del.status).toBe(200);
-			const delBody = (await del.json()) as { ok: boolean; emails: string[] };
-			expect(delBody.emails).toEqual([]);
+			const delBody = (await del.json()) as {
+				users: Array<{ id: string }>;
+			};
+			expect(delBody.users.some((u) => u.id === addBody.user.id)).toBe(false);
+
+			// Domains are still file-backed.
+			const domain = await app.fetch(
+				new Request("http://localhost/admin/allowlist", {
+					method: "POST",
+					headers: { cookie: adminCookie, "content-type": "application/json" },
+					body: JSON.stringify({ kind: "domain", value: "example.com" }),
+				}),
+			);
+			expect(domain.status).toBe(200);
+			const domainBody = (await domain.json()) as { domains: string[] };
+			expect(domainBody.domains).toContain("example.com");
+		});
+	});
+
+	test("admin edits roster identities without duplicating users", async () => {
+		await withApp(async (app) => {
+			const admin = await login(app, "alice", { role: "admin" });
+			const adminCookie = cookieFrom(admin);
+			const post = (path: string, body: unknown) =>
+				app.fetch(
+					new Request(`http://localhost${path}`, {
+						method: "POST",
+						headers: {
+							cookie: adminCookie,
+							"content-type": "application/json",
+						},
+						body: JSON.stringify(body),
+					}),
+				);
+
+			const added = await post("/admin/allowlist", { username: "kid" });
+			const addedBody = (await added.json()) as { user: { id: string } };
+			const userId = addedBody.user.id;
+
+			// The Add user sheet sends createOnly so an existing row cannot be
+			// silently changed (or have its password rotated) by a second add.
+			const duplicate = await post("/admin/allowlist", {
+				username: "kid",
+				createOnly: true,
+			});
+			expect(duplicate.status).toBe(409);
+
+			// Both the Add and Edit sheets must keep at least one identity.
+			const missing = await post("/admin/allowlist", {
+				username: "",
+				email: "",
+				createOnly: true,
+			});
+			expect(missing.status).toBe(400);
+			const cleared = await post(`/admin/users/${userId}/identity`, {
+				username: "",
+				email: "",
+			});
+			expect(cleared.status).toBe(400);
+
+			const edited = await post(`/admin/users/${userId}/identity`, {
+				username: "kid2",
+				email: "kid@team.test",
+				displayName: "Kid Two",
+			});
+			expect(edited.status).toBe(200);
+			const editedBody = (await edited.json()) as {
+				user: { id: string; name: string; username: string; email: string };
+			};
+			expect(editedBody.user.id).toBe(userId);
+			expect(editedBody.user.name).toBe("Kid Two");
+			expect(editedBody.user.username).toBe("kid2");
+			expect(editedBody.user.email).toBe("kid@team.test");
+
+			// A blank display name leaves the existing one alone.
+			const blankName = await post(`/admin/users/${userId}/identity`, {
+				displayName: "   ",
+			});
+			expect(blankName.status).toBe(200);
+			const blankNameBody = (await blankName.json()) as {
+				user: { name: string };
+			};
+			expect(blankNameBody.user.name).toBe("Kid Two");
+
+			// A reserved synthetic email follows a username-only rename.
+			const renamed = await post("/admin/allowlist", {
+				username: "placeholder",
+				createOnly: true,
+			});
+			const renamedBody = (await renamed.json()) as {
+				user: { id: string; email: string };
+			};
+			const synthetic = await post(
+				`/admin/users/${renamedBody.user.id}/identity`,
+				{ username: "renamed" },
+			);
+			const syntheticBody = (await synthetic.json()) as {
+				user: { email: string };
+			};
+			expect(syntheticBody.user.email).toBe(
+				"renamed@students.coderunner.invalid",
+			);
+
+			// Names already owned by someone else are rejected.
+			const conflict = await post(`/admin/users/${userId}/identity`, {
+				username: "kid2",
+				email: "renamed@students.coderunner.invalid",
+			});
+			expect(conflict.status).toBe(409);
+			const userCount = app.storage.db
+				.query("SELECT COUNT(*) AS count FROM user WHERE username = ?")
+				.get("kid2") as { count: number };
+			expect(userCount.count).toBe(1);
 		});
 	});
 

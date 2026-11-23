@@ -13,7 +13,7 @@ button.
 
 Configure as many as you like; each configured provider gets its own button.
 Auth0 is for teams that already manage their members in an Auth0 tenant: Auth0
-users skip the allowlist and get their CodeRunner role from Auth0 (see
+users skip the roster/domain rules and get their CodeRunner role from Auth0 (see
 [Set up Auth0](#set-up-auth0)). Username/password is disabled by default and
 enabled with `CODERUNNER_USERNAME_PASSWORD` (see
 [Username and password sign-in](#username-and-password-sign-in)).
@@ -72,7 +72,7 @@ You now have a **Client ID** and a **Client Secret**.
 ## Set up Auth0
 
 Auth0 sign-in works differently from GitHub and Google: Auth0 has already
-vetted your members, so **Auth0 users skip the allowlist**. Instead, CodeRunner
+vetted your members, so **Auth0 users skip the roster/domain rules**. Instead, CodeRunner
 uses Auth0's role-based access control (RBAC): it asks Auth0 for an access
 token for a CodeRunner API and reads the user's permissions on that API at
 every sign-in. Because the permissions belong to that one API, they don't
@@ -128,32 +128,43 @@ not have GitHub or Google accounts). It is **off by default**. Set:
 CODERUNNER_USERNAME_PASSWORD=true
 ```
 
-Restart the control plane. The login page then shows a username/password form
-with a **Create one** link for self-service sign-up. Students create an account
-with a username and a password of at least 8 characters.
+Restart the control plane. The login page then shows a username/password form.
+**Public sign-up is disabled**: every account is created by a coach, so there is
+no **Create one** link.
 
-Sign-up and sign-in are still gated by the same allowlist as OAuth. Add each
-student's username before they register:
+Coaches add students in **Admin → Users → Add user**, which opens a sheet. Give
+the student a username, an email, or both; leave the temporary-password field
+blank to generate one. The one-time password is shown once, stored only as a
+Better Auth scrypt hash, and must be changed at first sign-in. Until it is
+changed, the student is sent to **Your account** and the rest of the site is
+locked. The sheet only creates new users and requires a username or email. Use
+an existing row's Actions dropdown to change its username or email, reset the
+password, change role, or remove the user.
+
+The CLI does the same thing:
 
 ```bash
-docker compose exec control coderunner allowlist add username student
+docker compose exec control coderunner allowlist add user student
+# or add an email scaffold
+docker compose exec control coderunner allowlist add student@frcteam.org
 ```
 
-If the allowlist is empty, nobody can create an account; the control plane logs
-a warning at startup in that case.
-
-Passwords are hashed by Better Auth with **scrypt** — a random salt plus a
-64-byte derived key — and only the hash is written to the SQLite `account`
-table. Plaintext passwords are never stored or logged. The admin panel and CLI
-never display password hashes.
+The CLI upserts: adding an existing username or email reuses that user and
+issues a new temporary password; it never creates a duplicate account or
+workspace. The admin Add sheet refuses duplicates instead. A user-only row keeps
+a reserved `students.coderunner.invalid` address. Email is
+roster/provider-owned and cannot be changed from **Your account**; the page
+shows connection status for Google and other configured providers, and each
+method can only be disconnected while another login remains. Linking Google
+attaches its verified address to the same user row.
 
 :::caution[No email verification]
 
-CodeRunner does not send email, and username/password accounts do not have a
-verified email identity. Prefer OAuth/Auth0 when identity assurance matters. To
-revoke an account, remove the username from the allowlist; their next sign-in is denied
-and the just-created session is revoked. To also erase their workspace and
-data, use the admin panel's user deletion.
+CodeRunner does not send email, and a coach-provisioned address is not verified
+by a provider. Prefer OAuth/Auth0 when identity assurance matters. To revoke an
+account, remove the user from Admin → Users (or with `allowlist remove`);
+their next sign-in is denied. To also erase their workspace and data, use the
+admin panel's user deletion.
 
 :::
 
@@ -176,7 +187,7 @@ CodeRunner reads these from environment variables (see
 | `AUTH0_AUDIENCE` | Identifier of the Auth0 API that holds CodeRunner's permissions |
 | `AUTH0_USER_PERMISSION` | API permission that signs in as a student (default `coderunner:user`) |
 | `AUTH0_ADMIN_PERMISSION` | API permission that signs in as an admin (default `coderunner:admin`) |
-| `CODERUNNER_USERNAME_PASSWORD` | When `true`, enables username/password sign-in and self-service sign-up. Off by default. |
+| `CODERUNNER_USERNAME_PASSWORD` | When `true`, enables username/password sign-in. Off by default. Accounts are coach-provisioned; public sign-up is disabled. |
 
 An OAuth provider only appears on the login page when **both** its ID and
 secret are set (for Auth0, the domain and audience too). The username/password form appears when
@@ -190,7 +201,7 @@ deployment:
 ## Bootstrapping the first admin
 
 OAuth establishes *who* a person is; CodeRunner separately controls *whether*
-they may sign in (the allowlist) and *whether* they are an admin (the role).
+they may sign in (the roster) and *whether* they are an admin (the role).
 This section applies to GitHub and Google sign-ins; Auth0 users get both from
 their Auth0 permissions instead (see [Set up Auth0](#set-up-auth0)), though
 `CODERUNNER_ADMIN_EMAIL` still makes them an admin if Auth0 has verified the
@@ -199,22 +210,21 @@ address.
 ### The easy path: `CODERUNNER_ADMIN_EMAIL`
 
 Set `CODERUNNER_ADMIN_EMAIL` (comma-separated for multiple people) alongside
-your OAuth credentials before the first startup and the two steps below happen
-automatically — **no exec commands needed**. At startup the control plane adds
-each listed email to the allowlist, and on first OAuth sign-in the account is
-created with the admin role. An account that already exists with that email is
-promoted to admin at the next startup, so it also rescues a coach who signed in
-before the env var was set. (Auth0 accounts are not promoted at startup; they
-pick up the admin role at their next Auth0 sign-in once Auth0 has verified the
-address.)
+your OAuth credentials before the first startup and the roster is seeded
+automatically — **no exec commands needed**. At startup the control plane
+provisions a user row for each listed email with the admin role. An existing
+row with that email is promoted at the next startup, so this also rescues a
+coach who signed in before the env var was set. (Auth0 accounts are not promoted
+at startup; they pick up the admin role at their next Auth0 sign-in once Auth0
+has verified the address.)
 
 ```bash
 CODERUNNER_ADMIN_EMAIL=coach@frcteam.org,assistant@frcteam.org
 ```
 
 This is the recommended way to reach the admin panel on a fresh deployment. The
-manual commands below are still useful for allowlisting students and for
-changing roles later.
+manual commands below are still useful for adding students and changing roles
+later.
 
 ### Manual bootstrap and later changes
 
@@ -236,10 +246,12 @@ and apply to a from-source host checkout with Bun.
 
 :::
 
-### 1. Allowlist the emails that may sign in
+### 1. Add the people and domains that may sign in
 
-The allowlist gates every OAuth login. Until an email or domain is added,
-sign-in is blocked for everyone. Add an individual email or a whole domain:
+The roster and domain rules gate every GitHub/Google login. Until a person or
+domain is added, sign-in is blocked. Adding an individual email creates a user
+row (and, when username/password is enabled, prints a one-time password). Adding
+a domain only permits OAuth sign-ins from addresses at that domain:
 
 ```bash
 bun run allowlist:add coach@frcteam.org
@@ -247,13 +259,15 @@ bun run allowlist:add coach@frcteam.org
 bun run allowlist:add frcteam.org
 ```
 
-Other allowlist commands: `bun run allowlist:list`, `bun run allowlist:remove`.
+You can also do this in **Admin → Users → Add user**, which additionally
+accepts a username and display name, or in the **Domains** sheet at the top of
+the Users page. Promote admins from each row's Actions dropdown. Other commands:
+`bun run allowlist:list`, `bun run allowlist:remove`.
 
 ### 2. Promote the first admin
 
-Every user, including the first one, signs in as a regular user. After the
-first coach has signed in once (so their user row exists), promote them to
-admin:
+If you did not use `CODERUNNER_ADMIN_EMAIL`, promote the first coach after they
+have signed in once so their user row exists:
 
 ```bash
 bun run users:promote coach@frcteam.org

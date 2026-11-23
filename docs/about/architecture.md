@@ -34,7 +34,7 @@ At a high level there are three moving parts:
                         ▼
    ┌───────────────────────────────────────────────┐
    │  Control plane (Bun/TypeScript)                 │
-   │  ├─ Auth + sessions (OAuth, allowlist)          │
+   │  ├─ Auth + sessions (OAuth/password, roster)          │
    │  ├─ Workspace orchestration (start/stop)        │
    │  ├─ Authenticated proxy → editor / sim / NT4    │
    │  ├─ Authenticated PathPlanner file API          │
@@ -71,9 +71,10 @@ reverse proxy and TLS certificate.
 
 The control plane is a single Bun process. Its responsibilities:
 
-- **Authentication and sessions.** Sign-in is OAuth (GitHub and/or Google).
-  Only emails on an allowlist may sign in. Sessions are tracked with a signed
-  cookie. See the [Security Model](./security-model.md) for details.
+- **Authentication and sessions.** Sign-in is OAuth (GitHub, Google, and/or
+  Auth0) or coach-provisioned username/password. The Better Auth `user` table is
+  the roster; `data/allowlist.json` holds domain rules. Sessions are tracked
+  with a signed cookie. See the [Security Model](./security-model.md) for details.
 - **Workspace orchestration.** On a student's first sign-in the control plane
   creates their workspace and, when they open it, starts their Docker
   container. Depending on deployment mode it either publishes loopback host
@@ -150,7 +151,7 @@ workspace:
 ```text
 data/
 ├─ app.db                         control-plane database (SQLite)
-├─ allowlist.json                 who is allowed to sign in
+├─ allowlist.json                 allowed email domains
 └─ users/
    └─ <workspaceId>/
       ├─ project/                 the student's code (authoritative)

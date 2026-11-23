@@ -188,7 +188,8 @@ or Google matches `BETTER_AUTH_URL`:
 plane (for example `https://coderunner.yourteam.ca`). On a local deployment
 it is `http://<host-ip>:4000`.
 
-**Cause: email not on allowlist.** The student's email or domain is not in
+**Cause: email not on the roster or an allowed domain.** GitHub/Google
+sign-in checks the Better Auth `user` roster and the domain rules in
 `data/allowlist.json`. Check and add:
 
 ```bash
@@ -202,8 +203,13 @@ On a containerized deployment run these inside the control container instead
 (`cd /opt/coderunner && sudo` on the VM):
 `docker compose exec control coderunner allowlist list|add <email-or-domain>`.
 
-**Cause: empty allowlist.** If the allowlist is empty, everyone is blocked.
-Confirm with `bun run allowlist:list` and add at least one entry.
+Adding an email creates/reuses a roster row. With username/password enabled it
+also prints a one-time temporary password that the student must change at first
+sign-in.
+
+**Cause: empty roster and domain list.** If there is no roster row and no
+allowed domain, everyone is blocked. Confirm with `bun run allowlist:list` and
+add at least one entry.
 
 ---
 

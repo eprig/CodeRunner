@@ -20,15 +20,30 @@ not offered on the login page. Auth0 can be enabled alongside them (see
 [Set up Auth0](../deploying/oauth-credentials.md#set-up-auth0)).
 
 Username/password sign-in is an optional fourth method, enabled with
-`CODERUNNER_USERNAME_PASSWORD=true`. It is off by default. With it enabled,
-students can create their own account from the login page, but only for a
-username that is already on the allowlist.
+`CODERUNNER_USERNAME_PASSWORD=true`. It is off by default. Accounts are created
+by a coach in Admin → Users (or with the `allowlist` CLI), not by public
+sign-up. The coach can issue a one-time temporary password; the student must
+choose a new one before the rest of the site is accessible. The forced-change
+screen asks for the new password twice and does not ask for the old one, so a
+student who signs in with Google after a password reset is not blocked.
 
 Passwords are never stored or logged in plaintext. Better Auth hashes them
 inside the control plane with **scrypt** (a random 16-byte salt, N=16384,
 r=16, p=1, and a 64-byte derived key) and stores only `<salt>:<hash>` in the
 `account` table. Verification re-derives the key from the submitted password
 and the stored salt. Passwords must be 8–128 characters.
+
+A person can add more sign-in methods to the same account: username, email,
+password, GitHub/Google, and Auth0 attach to one Better Auth `user` row and one
+workspace. Account linking is enabled only for configured trusted providers;
+Google's verified address can be linked to a username-only row. The account page
+shows each connection and requires an explicit Disconnect action. Username and
+password are entered together in one form, with Change password available in the
+same card; the read-only email appears in the Google connection card when Google
+is configured. At least one login remains: removal is blocked, without a
+confirmation popup, when it would leave none, even if the remaining methods are
+all OAuth. Email is roster/provider-owned and cannot be changed from the account
+page.
 
 :::caution[Username accounts have no verified identity]
 
@@ -43,37 +58,40 @@ named `coderunner_session`. The signing key is the `BETTER_AUTH_SECRET`
 environment variable. Sessions expire after 14 days; the expiry is silently
 refreshed daily while the student is active.
 
-## Allowlist
+## Roster and domain rules
 
-An identity provider alone is not enough to sign in. After the GitHub or Google
-OAuth provider confirms a user's identity — or, for username/password sign-up,
-after the student submits a username and password — CodeRunner checks whether
-the identity is on the **allowlist** (`data/allowlist.json`). The check runs on
-new user creation and again on every OAuth callback and username/password sign-in,
-so a removed entry takes effect at the next login attempt.
+An identity provider alone is not enough to sign in. GitHub and Google sign-ins
+require either a Better Auth `user` row (the **roster**) whose username or email
+matches, or an allowed email domain. The roster is the single source of truth
+for people: coaches add users in Admin → Users, and adding an existing
+username or email reuses that account instead of creating a duplicate. The
+check runs on new user creation and again on every OAuth callback and
+username/password sign-in, so removing a roster row takes effect at the next
+login attempt.
 
-**Auth0 sign-ins skip the allowlist.** When Auth0 is configured, the operator's
-Auth0 tenant is trusted to decide who gets in: at every Auth0 sign-in
-CodeRunner requests an access token for its own Auth0 API (`AUTH0_AUDIENCE`)
-and admits the user only if the token's RBAC `permissions` hold the configured
-user or admin permission (the admin permission grants CodeRunner admin).
-Permissions on other APIs in the tenant count for nothing. A user whose
-permission is removed in Auth0 is denied at their next sign-in,
+**Auth0 sign-ins skip the roster and domain rules.** When Auth0 is configured,
+the operator's Auth0 tenant is trusted to decide who gets in: at every Auth0
+sign-in CodeRunner requests an access token for its own Auth0 API
+(`AUTH0_AUDIENCE`) and admits the user only if the token's RBAC `permissions`
+hold the configured user or admin permission (the admin permission grants
+CodeRunner admin). Permissions on other APIs in the tenant count for nothing. A
+user whose permission is removed in Auth0 is denied at their next sign-in,
 before any session is issued; sessions they already hold run until they expire.
 See [Set up Auth0](../deploying/oauth-credentials.md#set-up-auth0).
 
-The allowlist accepts individual addresses and whole domains. A team using
+`data/allowlist.json` now holds only domains. A team using
 `@frcteam1234.org` Google Workspace accounts can add that domain once rather
 than listing every member. The file format is:
 
 ```json
 {
-  "emails": ["coach@example.com"],
   "domains": ["frcteam1234.org"]
 }
 ```
 
-An admin can manage the allowlist through the admin UI or the admin API.
+Legacy `emails` and `usernames` entries are imported into the roster once at
+startup and removed from the file. An admin can manage people and domains
+through Admin → Users, the admin API, or the `allowlist` CLI.
 
 ## Admin role
 

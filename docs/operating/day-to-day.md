@@ -77,38 +77,80 @@ without any student-visible data loss.
 
 ## Managing who can sign in
 
-Access is controlled by an allowlist of email addresses and domains. Sign-in
-is via OAuth (GitHub and/or Google), but only emails that match the allowlist
-are permitted through. An empty allowlist blocks everyone.
+People are Better Auth `user` rows — the **roster** — and domains remain in
+`data/allowlist.json`. GitHub/Google sign-in requires either a roster row for
+that email or an allowed domain. Users with only a domain rule get a roster row
+on first sign-in. Auth0 users are vetted by Auth0 instead. An empty roster and
+empty domain list blocks everyone except Auth0 guests.
 
-### Viewing the allowlist
+### Viewing the roster and domains
+
+In the admin panel, open **Users**. The CLI prints both lists:
 
 ```bash
 bun run allowlist:list
 ```
 
-### Adding an entry
+Users marked **Pending** have not finished enrollment: they have a coach-set
+temporary password to change, or they have no login method yet.
 
-Pass an individual email address or a whole domain. The script auto-detects
-which kind you mean based on whether the value contains an `@`:
+### Adding a user
+
+Use **Admin → Users → Add user** to open a labelled sheet and supply a username,
+email, or both. You can also set the display name. New users are students;
+promote an existing user from the Users table when needed. The temporary
+password field is required: click **Generate** to fill a random password, edit
+it if you like, and use the eye button to show or hide it. The password is shown
+once after creation; the user must change it at first sign-in. They enter it
+twice on the account page — the old password is never requested there, so
+signing in with Google after a reset works too.
+The sheet only creates new users — adding an existing username or email shows a
+conflict. Each row's Actions dropdown has icon commands for editing the display
+name, username, and email, resetting the password, promoting/demoting, and
+removal. Admins get an **Admin** badge next to their name; the signed-in admin's
+row has no actions and cannot be changed through these endpoints because that
+would bypass the account-page safeguards. Identity sheets require at least one
+credential, and editing does not reset a password or move a workspace. A blank
+display name in the edit sheet leaves the current one in place. Pending is a badge
+for users still onboarding; resetting a password for an established email user
+instead shows a **Password reset** badge, because they still have a working
+sign-in method. **Domains** at the top of the page opens the Allowed email
+domains sheet.
+
+Equivalent CLI forms:
 
 ```bash
-# Allow a specific person
-bun run allowlist:add coach@frcteam.org
+# Create/reuse one user; prints a one-time password when password auth is enabled
+bun run allowlist:add user student
+bun run allowlist:add student@frcteam.org
+bun run allowlist:add email student@frcteam.org
+bun run allowlist:add username student
+```
 
-# Allow everyone at a domain (useful for team Google Workspace accounts)
+### Adding a domain
+
+Domains permit GitHub/Google sign-ins from any address at that domain. They do
+not create a roster row until the person signs in:
+
+```bash
 bun run allowlist:add frcteam.org
 ```
 
 ### Removing an entry
 
 ```bash
+# Remove a pending roster row
 bun run allowlist:remove old-member@frcteam.org
+
+# Remove a domain rule
 bun run allowlist:remove frcteam.org
 ```
 
-Changes take effect immediately; the running control plane watches
-`data/allowlist.json` and picks up edits without a restart.
+Removing an active user (one with a workspace) is an Admin → Users operation so
+the workspace deletion is explicit. Roster changes take effect immediately. The
+control plane also watches `data/allowlist.json` and picks up domain edits
+without a restart. Legacy email/username entries in that file are imported into
+the roster once at startup and then removed from the file.
 
 ---
 
@@ -116,8 +158,8 @@ Changes take effect immediately; the running control plane watches
 
 The **first** admin is best bootstrapped without any exec step: set
 `CODERUNNER_ADMIN_EMAIL` (comma-separated) in `.env` before the first startup
-and those accounts are allowlisted and granted the admin role on first sign-in
-(an existing account is promoted at the next startup). See
+and those identities are provisioned in the roster with the admin role (an
+existing account is promoted at the next startup). See
 [OAuth Credentials](../deploying/oauth-credentials.md). The commands here are for
 ongoing role changes after that.
 
@@ -199,12 +241,13 @@ allowlist, changing the concurrency cap) are recorded in the audit log.
 | `user.promote` | Promoting a user to admin |
 | `user.demote` | Demoting an admin |
 | `user.delete` | Deleting a user and their workspace |
+| `user.password-reset` | Issuing a new temporary password for a user |
 | `container.stop` | Stopping a workspace's containers |
 | `container.restart-code` | Restarting a workspace's code container |
 | `workspace.backup` | Creating an operator workspace backup |
 | `workspace.restore` | Restoring a workspace from a backup |
-| `allowlist.add` | Adding an email/domain to the allowlist |
-| `allowlist.remove` | Removing an email/domain from the allowlist |
+| `allowlist.add` | Adding a roster user or domain rule |
+| `allowlist.remove` | Removing a roster user or domain rule |
 | `config.max-active-containers` | Changing the container concurrency cap |
 | `classroom.create` | Starting a classroom |
 | `classroom.end` | Ending a classroom early ("End now") |

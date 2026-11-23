@@ -10,13 +10,13 @@ import type {
 	WorkspaceSlug,
 } from "@frc-coderunner/contracts";
 import { recordAuditEvent } from "./audit";
-import {
-	addAllowlistEntry,
-	getAllowlist,
-	loadAllowlist,
-	setAllowlistPath,
-} from "./auth/allowlist";
+import { loadAllowlist, setAllowlistPath } from "./auth/allowlist";
 import { type Auth, createAuth } from "./auth/auth";
+import {
+	addOrUpdateRosterUser,
+	importLegacyAllowlist,
+	listRosterUsers,
+} from "./auth/roster";
 import type { ControlConfig, ControlConfigInput } from "./config";
 import { loadControlConfig } from "./config";
 import { getLogger } from "./logging";
@@ -162,11 +162,12 @@ export class AppStorage {
 			},
 			audit: (event) => recordAuditEvent(this, event),
 		});
-		if (!this.config.demo && this.config.usernamePasswordAuth) {
+		if (!this.config.demo) {
 			// SQLite cannot ALTER TABLE ADD COLUMN with an inline UNIQUE
 			// constraint. Better Auth's username plugin generates exactly that
 			// migration, so create the nullable column and equivalent partial
-			// unique index first. Existing OAuth users remain valid with NULL.
+			// unique index first. The roster also stores usernames when the
+			// password plugin is off, so the column is always needed.
 			const userTable = this.db
 				.query(
 					"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user'",
@@ -193,10 +194,9 @@ export class AppStorage {
 			"CREATE UNIQUE INDEX IF NOT EXISTS idx_user_classroom_guest ON user(classroomId, guestNameKey) WHERE classroomId IS NOT NULL;",
 		);
 
-		// 5. Bootstrap admins from CODERUNNER_ADMIN_EMAIL. Runs after the allowlist
-		// is loaded and the better-auth `user` table exists, so it can both seed
-		// allowlist entries and promote an account that signed in before the env
-		// was set. New accounts get the admin role via the user.create hook.
+		// 5. Legacy usernames/emails become roster rows once, then bootstrap
+		// admins. Both need the Better Auth `user` table and account adapter.
+		await importLegacyAllowlist(this);
 		await this.seedBootstrapAdmins();
 
 		// 6. Warn if no auth methods are configured (skipped in demo mode).
@@ -233,10 +233,9 @@ export class AppStorage {
 				});
 			}
 			if (hasUsernamePassword) {
-				const allowlist = getAllowlist();
-				if (allowlist.usernames.length === 0) {
+				if (listRosterUsers(this.db).length === 0) {
 					log.warn(
-						"username/password auth is enabled but no usernames are allowlisted — no one can create a username account",
+						"username/password auth is enabled but the roster is empty — add a user from Admin → Users",
 					);
 				}
 				log.warn(
@@ -251,52 +250,47 @@ export class AppStorage {
 	}
 
 	/**
-	 * Seed the accounts named in CODERUNNER_ADMIN_EMAIL and
-	 * CODERUNNER_ADMIN_USERNAME so a fresh deployment needs zero exec steps:
-	 * each identity is added to the allowlist (idempotent), and any existing
-	 * non-admin account is promoted (except Auth0 users, whose role comes from
-	 * Auth0 at sign-in). Accounts that have not signed in yet get the admin
-	 * role from the user.create hook.
+	 * Provision the identities named in CODERUNNER_ADMIN_EMAIL and
+	 * CODERUNNER_ADMIN_USERNAME as roster rows so a fresh deployment needs zero
+	 * exec steps. Existing rows are only promoted, never demoted; Auth0 users
+	 * keep their role claim. No temporary password is generated here — admins
+	 * sign in with their configured provider (or get one from Admin → Users).
 	 */
 	private async seedBootstrapAdmins(): Promise<void> {
+		if (this.config.demo) return;
 		for (const email of this.config.adminEmails) {
-			await addAllowlistEntry("email", email);
-			log.info("bootstrap admin allowlisted", { email });
-
-			// config.adminEmails is lowercased; the stored email keeps whatever
-			// case the OAuth provider returned, so match case-insensitively.
 			// Rows with an Auth0 account are skipped: Auth0 sets the role at every
 			// sign-in and only makes an admin email admin once it is verified,
 			// while a row here may hold an unverified Auth0 self-sign-up.
-			const user = this.db
+			const auth0User = this.db
 				.query(
-					"SELECT id, role FROM user WHERE lower(email) = ? AND NOT EXISTS (SELECT 1 FROM account WHERE account.userId = user.id AND account.providerId = 'auth0')",
+					"SELECT 1 FROM user u WHERE lower(u.email) = ? AND EXISTS (SELECT 1 FROM account a WHERE a.userId = u.id AND a.providerId = 'auth0')",
 				)
-				.get(email) as { id: string; role: string | null } | null;
-			if (user && user.role !== "admin") {
-				this.db
-					.query("UPDATE user SET role = ?, updatedAt = ? WHERE id = ?")
-					.run("admin", nowIso(), user.id);
-				log.info("bootstrap admin promoted", { email });
-			}
+				.get(email);
+			if (auth0User) continue;
+
+			const result = await addOrUpdateRosterUser(this, {
+				email,
+				displayName: "Coach",
+				role: "admin",
+				provisionOnly: true,
+				promoteOnly: true,
+			});
+			if (result.created) log.info("bootstrap admin provisioned", { email });
 		}
 
 		// The username plugin only creates the `username` column when username
 		// auth is enabled, so only touch it in that mode.
-		if (this.config.demo || !this.config.usernamePasswordAuth) return;
+		if (!this.config.usernamePasswordAuth) return;
 		for (const username of this.config.adminUsernames) {
-			await addAllowlistEntry("username", username);
-			log.info("bootstrap admin allowlisted", { username });
-
-			const user = this.db
-				.query("SELECT id, role FROM user WHERE lower(username) = ?")
-				.get(username) as { id: string; role: string | null } | null;
-			if (user && user.role !== "admin") {
-				this.db
-					.query("UPDATE user SET role = ?, updatedAt = ? WHERE id = ?")
-					.run("admin", nowIso(), user.id);
-				log.info("bootstrap admin promoted", { username });
-			}
+			const result = await addOrUpdateRosterUser(this, {
+				username,
+				displayName: username,
+				role: "admin",
+				provisionOnly: true,
+				promoteOnly: true,
+			});
+			if (result.created) log.info("bootstrap admin provisioned", { username });
 		}
 	}
 
