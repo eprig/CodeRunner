@@ -1,18 +1,28 @@
 /**
- * Email allowlist — load and validate an allowlist of emails and domains.
+ * Sign-in allowlist — load and validate usernames, emails, and domains.
  *
  * File location: data/allowlist.json (gitignored).
- * Schema: { "emails": ["a@b.com"], "domains": ["b.com"] }
+ * Schema: {
+ *   "usernames": ["alice"],
+ *   "emails": ["a@b.com"],
+ *   "domains": ["b.com"]
+ * }
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 export type AllowlistData = {
+	usernames: string[];
 	emails: string[];
 	domains: string[];
 };
 
-const EMPTY: AllowlistData = { emails: [], domains: [] };
+type AllowlistKind = "username" | "email" | "domain";
+
+const EMPTY: AllowlistData = { usernames: [], emails: [], domains: [] };
+
+/** Matches Better Auth's username plugin defaults: 3-30 chars, no spaces. */
+export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/u;
 
 let cached: AllowlistData = EMPTY;
 let allowlistPath = "";
@@ -21,10 +31,42 @@ function normalize(s: string): string {
 	return s.trim().toLowerCase();
 }
 
-function normalizeEntry(kind: "email" | "domain", value: string): string {
+export function normalizeUsername(value: string): string {
+	return normalize(value);
+}
+
+export function isValidUsername(value: string): boolean {
+	return USERNAME_PATTERN.test(normalize(value));
+}
+
+/**
+ * Better Auth requires an email on every user row, but username accounts do
+ * not have one. Use a reserved `.invalid` address derived from the username:
+ * it can never be a real mailbox and is unique per username.
+ */
+export const SYNTHETIC_EMAIL_DOMAIN = "students.coderunner.invalid";
+
+export function syntheticEmailForUsername(username: string): string {
+	return `${normalizeUsername(username)}@${SYNTHETIC_EMAIL_DOMAIN}`;
+}
+
+export function isSyntheticEmail(email: string): boolean {
+	return normalize(email).endsWith(`@${SYNTHETIC_EMAIL_DOMAIN}`);
+}
+
+function normalizeEntry(kind: AllowlistKind, value: string): string {
 	const normalized = normalize(value);
 	if (!normalized) {
 		throw new Error("Allowlist value is required.");
+	}
+
+	if (kind === "username") {
+		if (!isValidUsername(normalized)) {
+			throw new Error(
+				"Allowlist username must be 3-30 characters using letters, numbers, dots, or underscores.",
+			);
+		}
+		return normalized;
 	}
 
 	if (kind === "email") {
@@ -47,6 +89,10 @@ function normalizeEntry(kind: "email" | "domain", value: string): string {
 	return domain;
 }
 
+function emptyAllowlist(): AllowlistData {
+	return { usernames: [], emails: [], domains: [] };
+}
+
 export function setAllowlistPath(dataDir: string): void {
 	allowlistPath = resolve(dataDir, "allowlist.json");
 }
@@ -67,6 +113,9 @@ export async function loadAllowlist(): Promise<AllowlistData> {
 
 	const parsed = JSON.parse(raw) as Partial<AllowlistData>;
 	cached = {
+		usernames: (parsed.usernames ?? []).map((entry) =>
+			normalizeEntry("username", entry),
+		),
 		emails: (parsed.emails ?? []).map((entry) =>
 			normalizeEntry("email", entry),
 		),
@@ -83,6 +132,10 @@ export function reloadAllowlist(): Promise<AllowlistData> {
 
 export function getAllowlist(): AllowlistData {
 	return cached;
+}
+
+export function isUsernameAllowed(username: string): boolean {
+	return cached.usernames.includes(normalizeUsername(username));
 }
 
 export function isEmailAllowed(email: string): boolean {
@@ -102,6 +155,11 @@ export function isEmailAllowed(email: string): boolean {
 export async function saveAllowlist(data: AllowlistData): Promise<void> {
 	if (!allowlistPath) throw new Error("Allowlist path not set");
 	const sorted: AllowlistData = {
+		usernames: [
+			...new Set(
+				data.usernames.map((entry) => normalizeEntry("username", entry)),
+			),
+		].sort(),
 		emails: [
 			...new Set(data.emails.map((entry) => normalizeEntry("email", entry))),
 		].sort(),
@@ -117,16 +175,23 @@ export async function saveAllowlist(data: AllowlistData): Promise<void> {
 }
 
 export async function addAllowlistEntry(
-	kind: "email" | "domain",
+	kind: AllowlistKind,
 	value: string,
 ): Promise<AllowlistData> {
 	const current = {
+		...emptyAllowlist(),
 		...cached,
+		usernames: [...cached.usernames],
 		emails: [...cached.emails],
 		domains: [...cached.domains],
 	};
 	const normalized = normalizeEntry(kind, value);
-	const list = kind === "email" ? current.emails : current.domains;
+	const list =
+		kind === "username"
+			? current.usernames
+			: kind === "email"
+				? current.emails
+				: current.domains;
 	if (!list.includes(normalized)) {
 		list.push(normalized);
 	}
@@ -135,16 +200,20 @@ export async function addAllowlistEntry(
 }
 
 export async function removeAllowlistEntry(
-	kind: "email" | "domain",
+	kind: AllowlistKind,
 	value: string,
 ): Promise<AllowlistData> {
 	const current = {
+		...emptyAllowlist(),
 		...cached,
+		usernames: [...cached.usernames],
 		emails: [...cached.emails],
 		domains: [...cached.domains],
 	};
 	const normalized = normalizeEntry(kind, value);
-	if (kind === "email") {
+	if (kind === "username") {
+		current.usernames = current.usernames.filter((u) => u !== normalized);
+	} else if (kind === "email") {
 		current.emails = current.emails.filter((e) => e !== normalized);
 	} else {
 		current.domains = current.domains.filter((d) => d !== normalized);

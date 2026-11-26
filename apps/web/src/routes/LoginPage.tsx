@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import type { IconType } from "react-icons";
 import { SiAuth0, SiGithub, SiGoogle } from "react-icons/si";
 import { useSearchParams } from "react-router";
@@ -43,34 +43,74 @@ interface OAuthButtonProps {
 function OAuthButton({ provider, disabled, onClick }: OAuthButtonProps) {
 	const { label, Icon, className } = PROVIDER_BUTTONS[provider];
 	return (
-		<div className="rounded-lg border border-border bg-card p-2">
-			<button
-				type="button"
-				onClick={onClick}
-				disabled={disabled}
-				className={cn(
-					"flex h-11 w-full items-center justify-center gap-3 rounded-md border px-4 text-[13px] font-semibold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-45",
-					className,
-				)}
-			>
-				<Icon className="size-[18px] shrink-0" />
-				{label}
-			</button>
-		</div>
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={cn(
+				"flex h-11 w-full items-center justify-center gap-3 rounded-md border px-4 text-[13px] font-semibold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-45",
+				className,
+			)}
+		>
+			<Icon className="size-4.5 shrink-0" />
+			{label}
+		</button>
 	);
+}
+
+const inputClassName =
+	"h-11 w-full rounded-md border border-border bg-card px-3.5 text-[13px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/30 focus:ring-2 focus:ring-white/[0.06]";
+
+const ROSTER_MESSAGE =
+	"You're not on the roster yet. Ask your coach to add you.";
+
+const INVALID_CREDENTIALS_MESSAGE = "Incorrect username or password.";
+
+function friendlyAuthError(message: string | undefined) {
+	const detail = message?.trim() ?? "";
+	const lower = detail.toLowerCase();
+
+	if (lower.includes("roster") || lower.includes("not on the allowlist")) {
+		return ROSTER_MESSAGE;
+	}
+	if (
+		lower.includes("invalid username or password") ||
+		lower.includes("invalid email or password") ||
+		lower.includes("invalid credentials")
+	) {
+		return INVALID_CREDENTIALS_MESSAGE;
+	}
+	if (lower.includes("already exists") || lower.includes("already taken")) {
+		return "That username is already taken. Try signing in instead.";
+	}
+	if (lower.includes("username") && lower.includes("valid")) {
+		return "Usernames must be 3–30 characters using letters, numbers, dots, or underscores.";
+	}
+	if (lower.includes("too short")) {
+		return "Passwords must be at least 8 characters.";
+	}
+	if (detail.length > 0) {
+		return detail;
+	}
+	return "Couldn't sign in. Please try again.";
 }
 
 export function LoginPage() {
 	const [searchParams] = useSearchParams();
 	const [loading, setLoading] = useState(false);
 	const [providers, setProviders] = useState<AuthProvider[] | null>(null);
+	const [usernamePasswordEnabled, setUsernamePasswordEnabled] = useState(false);
 	const [providersError, setProvidersError] = useState<string | null>(null);
 	const [signInError, setSignInError] = useState<string | null>(null);
+	const [username, setUsername] = useState("");
+	const [password, setPassword] = useState("");
 
 	const rawError = searchParams.get("error");
 	const friendlyError =
-		rawError === "forbidden" || rawError?.toLowerCase().includes("roster")
-			? "You're not on the roster yet. Ask your coach to add you."
+		rawError === "forbidden" ||
+		rawError?.toLowerCase().includes("roster") ||
+		rawError?.toLowerCase().includes("not_on_the_roster")
+			? ROSTER_MESSAGE
 			: (rawError?.replaceAll("_", " ") ?? null);
 	const availableProviders = providers ?? [];
 
@@ -90,12 +130,14 @@ export function LoginPage() {
 				}
 				const parsed = authProvidersResponseSchema.parse(await response.json());
 				setProviders(parsed.providers);
+				setUsernamePasswordEnabled(parsed.usernamePassword);
 				setProvidersError(null);
 			} catch (error) {
 				if (error instanceof DOMException && error.name === "AbortError") {
 					return;
 				}
 				setProviders([]);
+				setUsernamePasswordEnabled(false);
 				setProvidersError(
 					"Sign-in is unavailable right now. Please refresh and try again.",
 				);
@@ -134,6 +176,35 @@ export function LoginPage() {
 					? error.message
 					: "Couldn't start sign-in. Please try again.",
 			);
+		}
+	}
+
+	async function submitUsernamePassword(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		setLoading(true);
+		setSignInError(null);
+		const identifier = username.trim().toLowerCase();
+		try {
+			const result = identifier.includes("@")
+				? await authClient.signIn.email({ email: identifier, password })
+				: await authClient.signIn.username({ username: identifier, password });
+
+			if (result.error) {
+				setSignInError(friendlyAuthError(result.error.message));
+				return;
+			}
+
+			// Let the server route "/" decide where this user belongs. A coach-set
+			// temporary password redirects on to the forced change screen.
+			window.location.assign("/");
+		} catch (error) {
+			setSignInError(
+				error instanceof Error
+					? friendlyAuthError(error.message)
+					: "Something went wrong. Please try again.",
+			);
+		} finally {
+			setLoading(false);
 		}
 	}
 
@@ -187,7 +258,58 @@ export function LoginPage() {
 						</div>
 					)}
 
-					{/* Buttons */}
+					{/* Username/password */}
+					{usernamePasswordEnabled && (
+						<form
+							onSubmit={submitUsernamePassword}
+							className="mb-4 flex flex-col gap-2"
+						>
+							<input
+								type="text"
+								name="username"
+								value={username}
+								onChange={(event) => setUsername(event.target.value)}
+								placeholder="Username or email"
+								autoComplete="username"
+								autoCapitalize="none"
+								spellCheck={false}
+								aria-label="Username or email"
+								minLength={3}
+								maxLength={30}
+								required
+								className={inputClassName}
+							/>
+							<input
+								type="password"
+								name="password"
+								value={password}
+								onChange={(event) => setPassword(event.target.value)}
+								placeholder="Password"
+								autoComplete="current-password"
+								aria-label="Password"
+								required
+								className={inputClassName}
+							/>
+							<button
+								type="submit"
+								disabled={loading}
+								className="mt-1 flex h-11 w-full items-center justify-center rounded-md border border-border bg-white/6 text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/11 disabled:cursor-not-allowed disabled:opacity-45"
+							>
+								Sign in
+							</button>
+						</form>
+					)}
+
+					{/* Divider between password and OAuth */}
+					{usernamePasswordEnabled && availableProviders.length > 0 && (
+						<div className="mb-4 flex items-center gap-3 text-[9.5px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+							<span className="h-px flex-1 bg-border" />
+							or
+							<span className="h-px flex-1 bg-border" />
+						</div>
+					)}
+
+					{/* OAuth buttons */}
 					<div className="flex flex-col gap-2">
 						{providers === null ? (
 							<div className="rounded-lg border border-border bg-card px-4 py-3 text-[12px] text-muted-foreground">
@@ -202,7 +324,7 @@ export function LoginPage() {
 									onClick={() => signIn(provider)}
 								/>
 							))
-						) : (
+						) : usernamePasswordEnabled ? null : (
 							<div className="rounded-lg border border-border bg-card px-4 py-3 text-[12px] text-muted-foreground">
 								Sign-in isn&apos;t configured yet. Ask your coach to enable a
 								sign-in provider.
@@ -213,16 +335,16 @@ export function LoginPage() {
 					{/* Classroom guests */}
 					<a
 						href="/join"
-						className="mt-3 flex h-11 w-full items-center justify-center rounded-md border border-border text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/[0.06]"
+						className="mt-3 flex h-11 w-full items-center justify-center rounded-md border border-border text-[13px] font-semibold tracking-wide text-foreground transition-all hover:bg-white/6"
 					>
 						Join a classroom
 					</a>
 
 					{/* Fine print */}
 					<p className="mt-6 text-[10.5px] leading-relaxed text-muted-foreground">
-						Not on the roster?{" "}
+						No account yet?{" "}
 						<span className="text-foreground/60">
-							Ask your coach for a classroom code.
+							Ask your coach to add you to the roster, or use a classroom code.
 						</span>
 					</p>
 				</div>

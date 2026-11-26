@@ -119,8 +119,8 @@ export const test = base.extend<AppFixtures & AppOptions>({
 			const candidate = await createApp({
 				dataDir: join(root, "data"),
 				catalogDir,
-				// Keep the suite hermetic: never inherit LESSONS_CATALOG_REPO
-				// from a developer's .env and hit the network.
+				// Keep fixtures independent of the operator's local .env: never
+				// inherit LESSONS_CATALOG_REPO and hit the network.
 				catalogRepo: null,
 				webDistDir,
 				advantageScopeDistDir: ascopeDistDir,
@@ -129,6 +129,17 @@ export const test = base.extend<AppFixtures & AppOptions>({
 				baseUrl,
 				idleStopMinutes: 30,
 				containerAutoStart: false,
+				adminEmails: [],
+				adminUsernames: [],
+				githubClientId: "",
+				githubClientSecret: "",
+				googleClientId: "",
+				googleClientSecret: "",
+				auth0Domain: "",
+				auth0ClientId: "",
+				auth0ClientSecret: "",
+				auth0Audience: "",
+				usernamePasswordAuth: true,
 				runtimeProvider: runtime,
 				runCommandFactory: runCommandFactory.factory,
 				...(runBuildTimeoutMs

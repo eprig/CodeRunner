@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { AdminLayout, type Tab } from "./AdminLayout";
-import { Allowlist } from "./pages/Allowlist";
 import { AuditLog } from "./pages/AuditLog";
 import { Classrooms } from "./pages/Classrooms";
 import { Containers } from "./pages/Containers";
@@ -18,7 +17,6 @@ export function AdminApp() {
 			{tab === "workspaces" && <Workspaces />}
 			{tab === "users" && <Users />}
 			{tab === "classrooms" && <Classrooms />}
-			{tab === "allowlist" && <Allowlist />}
 			{tab === "audit-log" && <AuditLog />}
 		</AdminLayout>
 	);

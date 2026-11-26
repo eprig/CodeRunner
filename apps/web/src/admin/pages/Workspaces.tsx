@@ -100,12 +100,7 @@ export function Workspaces() {
 										<td className="py-2 font-mono">
 											{workspace.workspace.slug}
 										</td>
-										<td className="py-2">
-											{workspace.user.displayName}
-											<div className="text-xs text-muted-foreground">
-												{workspace.user.email}
-											</div>
-										</td>
+										<td className="py-2">{workspace.user.displayName}</td>
 										<td className="py-2">
 											{new Date(
 												workspace.workspace.lastAccessedAt,

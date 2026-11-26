@@ -32,8 +32,9 @@ filesystem bridge makes the bind-mounted student workspaces noticeably slower.
 
 :::
 
-Before continuing, register at least one GitHub or Google OAuth app as described
-in [OAuth Credentials](./oauth-credentials.md).
+Before continuing, choose at least one sign-in method: register a GitHub or
+Google OAuth app as described in [OAuth Credentials](./oauth-credentials.md),
+or enable the optional username/password sign-in (`CODERUNNER_USERNAME_PASSWORD=true`).
 
 ## 1. Clone and configure
 
@@ -57,6 +58,9 @@ GITHUB_CLIENT_ID=<your-github-client-id>
 GITHUB_CLIENT_SECRET=<your-github-client-secret>
 # GOOGLE_CLIENT_ID=<your-google-client-id>
 # GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+#
+# OR enable username/password sign-in instead of (or alongside) OAuth:
+# CODERUNNER_USERNAME_PASSWORD=true
 
 # Comma-separated coach/admin emails.
 CODERUNNER_ADMIN_EMAIL=you@yourteam.org
@@ -123,16 +127,21 @@ Students can then open `http://<your-LAN-IP>:4000/`.
 ## 3. Sign in and allow students
 
 Sign in with an address listed in `CODERUNNER_ADMIN_EMAIL`. At startup that
-address is added to the allowlist, and its account becomes an admin on first
-sign-in. From the admin panel you can manage workspaces and other users.
+address is provisioned as a roster row with the admin role. From the admin panel
+you can manage workspaces, the roster, and domains.
 
-Other users must match an allowlist entry before OAuth sign-in can complete.
-Add an individual address or a whole domain:
+Other GitHub/Google users need a roster row or an allowed domain. Adding an
+individual address creates a user row; adding a domain permits any verified
+address at that domain to create its own row on first sign-in:
 
 ```bash
 docker compose exec control coderunner allowlist add student@frcteam.org
 docker compose exec control coderunner allowlist add frcteam.org
 ```
+
+With username/password enabled, `allowlist add user alice` also prints a
+one-time password that the student must change at first sign-in. Adding an
+existing username or email reuses the same user and workspace.
 
 To promote another coach after they have signed in once:
 

@@ -41,9 +41,10 @@ See [Google Cloud Deployment](./gcloud.md).
 
 Regardless of shape, every non-demo deployment needs:
 
-- **OAuth credentials.** Login is via GitHub and/or Google sign-in through
-  Better Auth; at least one provider must be configured. Register your apps
-  first; see [OAuth Credentials](./oauth-credentials.md).
+- **A sign-in method.** Login is via GitHub, Google, and/or Auth0 through Better
+  Auth, with coach-provisioned username/password as an optional alternative; at
+  least one method must be configured. Register your apps first; see
+  [OAuth Credentials](./oauth-credentials.md).
 - **Docker.** Each active student runs in a per-student workspace container
   (sim + editor), so the host needs a working Docker Engine.
 

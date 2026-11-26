@@ -105,6 +105,26 @@ re-read at every sign-in. Users with no permission are rejected in
 `mapProfileToUser` (after-hook throws are lost behind the callback redirect).
 See `docs/decisions/044-auth0-sso.md` and `048-auth0-rbac-permissions.md`.
 
+**Roster and additive logins (post-V2):** Better Auth's `user` table is the
+single roster row; `data/allowlist.json` keeps only domain rules, and legacy
+email/username entries are imported once at startup. Admin → Users uses
+**Add user** to scaffold a student row with an optional one-time password
+(stored only as a Better Auth hash, shown once); the student lands on `/account`
+until they change it. Add user opens a sheet and only creates new rows; each
+row's Actions dropdown (with icons) opens Edit/Reset password/Promote or
+Demote/Remove. Identity sheets require at least one credential. Pending is a
+badge in that table, and a top-level Domains button opens the domain rules
+(the Allowlist tab is gone). Username, email, password, and OAuth logins attach
+to that same row and workspace — public sign-up and account merging are
+disabled/out of scope. Email
+is roster/provider-owned and cannot be changed from the account page; password
+and OAuth methods can only be removed while another login remains. Pending means
+`mustChangePassword` or zero linked accounts.
+Bootstrap admins are roster rows, not file entries; Auth0 keeps RBAC role
+authority. See `docs/decisions/014-betterauth-integration.md` and
+`docs/decisions/052-roster-scaffolding-and-additive-logins.md`,
+`053-account-sign-in-method-management.md`.
+
 **Sim debugging (post-V2):** Start is a split button with **Debug** and
 **Build** run modes (`mode` on `POST /api/sim/run`, `SIM_MODE` into
 `run-sim.sh`). Debug starts the robot JVM with a loopback JDWP agent
@@ -170,7 +190,7 @@ arch-independent). See `docs/decisions/035-multi-arch-images-and-workflow-split.
 ## Key References
 
 - `docs/` + `website/` — docs site content and Docusaurus config; published at `https://mathewdunne.github.io/CodeRunner/`; run `bun run docs:dev` to browse locally, `bun run docs:build` to build.
-- `docs/decisions/` — all architecture decision logs (011–051 active; 001–010 archived under `docs/decisions/archive/`).
+- `docs/decisions/` — all architecture decision logs (011–053 active; 001–010 archived under `docs/decisions/archive/`).
 - Pinned AdvantageScope submodule: `vendor/AdvantageScope` at tag `v26.0.2`.
 
 ## Commands

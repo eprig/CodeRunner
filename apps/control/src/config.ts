@@ -20,6 +20,8 @@ export type ControlConfig = {
 	pathplannerDistDir: string;
 	sessionSecret: string;
 	baseUrl: string;
+	/** Enable Better Auth's username/password sign-in and sign-up. */
+	usernamePasswordAuth: boolean;
 	githubClientId: string | null;
 	githubClientSecret: string | null;
 	googleClientId: string | null;
@@ -55,6 +57,7 @@ export type ControlConfig = {
 	maxActiveContainers: number;
 	demo: boolean;
 	adminEmails: string[];
+	adminUsernames: string[];
 };
 
 export type ControlConfigInput = Partial<
@@ -66,8 +69,10 @@ export type ControlConfigInput = Partial<
 		| "logLevel"
 		| "containerAutoStart"
 		| "demo"
+		| "usernamePasswordAuth"
 		| "adminEmails"
 		| "gradleCachePruneDays"
+		| "adminUsernames"
 	>
 > & {
 	simPortRange?: PortRange | string;
@@ -80,8 +85,10 @@ export type ControlConfigInput = Partial<
 	port?: number | string;
 	logLevel?: LogLevel | string;
 	demo?: boolean | string;
+	usernamePasswordAuth?: boolean | string;
 	containerAutoStart?: boolean | string;
 	adminEmails?: string[] | string;
+	adminUsernames?: string[] | string;
 };
 
 function parseLogLevelOrThrow(value: string | LogLevel | undefined): LogLevel {
@@ -153,7 +160,34 @@ function parseBoolean(
 	return !["0", "false", "no", "off"].includes(normalized);
 }
 
+function parseTrueFalse(
+	value: string | boolean | undefined,
+	fallback: boolean,
+	name: string,
+): boolean {
+	if (typeof value === "boolean") {
+		return value;
+	}
+	if (value === undefined || value.trim() === "") {
+		return fallback;
+	}
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "true") return true;
+	if (normalized === "false") return false;
+	throw new Error(`Invalid ${name} "${value}". Expected true or false.`);
+}
+
 function parseAdminEmails(value: string | string[] | undefined): string[] {
+	if (value === undefined) {
+		return [];
+	}
+	const entries = Array.isArray(value) ? value : value.split(",");
+	return entries
+		.map((entry) => entry.trim().toLowerCase())
+		.filter((entry) => entry.length > 0);
+}
+
+function parseAdminUsernames(value: string | string[] | undefined): string[] {
 	if (value === undefined) {
 		return [];
 	}
@@ -322,13 +356,12 @@ export function loadControlConfig(
 		dbPath: resolve(
 			input.dbPath ?? Bun.env.FRC_DB_PATH ?? resolve(dataDir, "app.db"),
 		),
-		// An explicit `null` means "bundled catalog"; only fall back to the
-		// environment when the caller did not supply the option at all. Tests
-		// rely on this to stay hermetic against a developer's .env.
+		// An explicit `null` means "no remote catalog" even when the operator's
+		// environment has LESSONS_CATALOG_REPO set (tests and demos rely on this).
 		catalogRepo:
-			input.catalogRepo === undefined
-				? (Bun.env.LESSONS_CATALOG_REPO ?? null)
-				: input.catalogRepo,
+			input.catalogRepo !== undefined
+				? input.catalogRepo
+				: (Bun.env.LESSONS_CATALOG_REPO ?? null),
 		catalogBranch:
 			input.catalogBranch ?? Bun.env.LESSONS_CATALOG_BRANCH ?? "main",
 		catalogDir: resolve(
@@ -364,6 +397,11 @@ export function loadControlConfig(
 			input.baseUrl ??
 			Bun.env.BETTER_AUTH_URL ??
 			`http://localhost:${input.port ?? Bun.env.PORT ?? 4000}`,
+		usernamePasswordAuth: parseTrueFalse(
+			input.usernamePasswordAuth ?? Bun.env.CODERUNNER_USERNAME_PASSWORD,
+			false,
+			"CODERUNNER_USERNAME_PASSWORD",
+		),
 		githubClientId: input.githubClientId ?? Bun.env.GITHUB_CLIENT_ID ?? null,
 		githubClientSecret:
 			input.githubClientSecret ?? Bun.env.GITHUB_CLIENT_SECRET ?? null,
@@ -455,6 +493,9 @@ export function loadControlConfig(
 		demo: parseBoolean(input.demo ?? Bun.env.CODERUNNER_DEMO_MODE, false),
 		adminEmails: parseAdminEmails(
 			input.adminEmails ?? Bun.env.CODERUNNER_ADMIN_EMAIL,
+		),
+		adminUsernames: parseAdminUsernames(
+			input.adminUsernames ?? Bun.env.CODERUNNER_ADMIN_USERNAME,
 		),
 	};
 }

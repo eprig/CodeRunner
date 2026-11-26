@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authClient } from "@/lib/auth-client";
+import { AccountPage } from "@/routes/AccountPage";
 import { JoinPage } from "@/routes/JoinPage";
 import { LoginPage } from "@/routes/LoginPage";
 import { ServiceOfflinePage } from "@/routes/ServiceOfflinePage";
@@ -23,6 +24,10 @@ const router = createBrowserRouter([
 	{
 		path: "/join",
 		element: <JoinPage />,
+	},
+	{
+		path: "/account",
+		element: <AccountPage />,
 	},
 	{
 		path: "/admin/*",
@@ -50,8 +55,11 @@ function RootIndex() {
 	// apps/control/src/app.ts can't run. Replicate it here.
 	const { data, isPending } = authClient.useSession();
 	if (isPending) return null;
-	const slug = (data?.user as { slug?: string } | undefined)?.slug;
-	if (slug) return <Navigate to={`/u/${slug}/`} replace />;
+	const user = data?.user as
+		| { slug?: string; mustChangePassword?: boolean }
+		| undefined;
+	if (user?.mustChangePassword) return <Navigate to="/account" replace />;
+	if (user?.slug) return <Navigate to={`/u/${user.slug}/`} replace />;
 	return <Navigate to="/login" replace />;
 }
 

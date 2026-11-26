@@ -25,6 +25,7 @@ export async function getSessionFromRequest(
 		image: string | null;
 		role: string;
 		slug: string;
+		mustChangePassword: boolean;
 	};
 	session: { token: string };
 } | null> {
@@ -48,6 +49,7 @@ export async function getSessionFromRequest(
 			role?: string;
 			slug?: string;
 			classroomId?: string | null;
+			mustChangePassword?: boolean;
 		};
 		// Classroom guests are only signed in while their classroom is live.
 		// This is the authoritative check: Better Auth's updateAge refresh can
@@ -83,6 +85,7 @@ export async function getSessionFromRequest(
 					? "student"
 					: ((user.role as string) ?? "student"),
 				slug: (user.slug as string) ?? "",
+				mustChangePassword: user.mustChangePassword === true,
 			},
 			session: { token: session.session.token },
 		};
@@ -107,6 +110,7 @@ export async function requireSession(
 				image: string | null;
 				role: string;
 				slug: string;
+				mustChangePassword: boolean;
 			};
 			session: { token: string };
 	  }
@@ -163,6 +167,7 @@ export async function requireAdmin(
 				image: string | null;
 				role: string;
 				slug: string;
+				mustChangePassword: boolean;
 			};
 	  }
 	| Response
@@ -181,6 +186,7 @@ export async function requireAdmin(
 					image: null,
 					role: "admin",
 					slug: "",
+					mustChangePassword: false,
 				},
 			};
 		}

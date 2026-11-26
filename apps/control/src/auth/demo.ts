@@ -25,6 +25,7 @@ export function getDemoSession() {
 			image: null as string | null,
 			role: "admin",
 			slug: DEMO_SLUG,
+			mustChangePassword: false,
 		},
 		session: { token: "demo-synthetic-session" },
 	};
@@ -45,6 +46,7 @@ export function getDemoSessionResponseBody() {
 			updatedAt: now.toISOString(),
 			role: "admin",
 			slug: DEMO_SLUG,
+			mustChangePassword: false,
 		},
 		session: {
 			id: "demo-synthetic-session",

@@ -2,6 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { loadControlConfig } from "../config";
 
 describe("parseBoolean (via loadControlConfig)", () => {
+	test("username/password auth accepts only true or false", () => {
+		expect(
+			loadControlConfig({ usernamePasswordAuth: "true" }).usernamePasswordAuth,
+		).toBe(true);
+		expect(
+			loadControlConfig({ usernamePasswordAuth: "false" }).usernamePasswordAuth,
+		).toBe(false);
+		expect(() => loadControlConfig({ usernamePasswordAuth: "1" })).toThrow(
+			/Expected true or false/,
+		);
+	});
+
 	test("empty string falls back to the default for demo (false)", () => {
 		expect(loadControlConfig({ demo: "" }).demo).toBe(false);
 	});

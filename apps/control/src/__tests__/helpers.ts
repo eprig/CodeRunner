@@ -190,8 +190,9 @@ export async function withApp<T>(
 	const app = await createApp({
 		dataDir: join(root, "data"),
 		catalogDir,
-		// Tests must not reach the real remote lessons repo just because the
-		// developer's .env sets LESSONS_CATALOG_REPO; individual tests opt in.
+		// Tests must not inherit the operator's local .env (a remote lesson repo
+		// or bootstrap admin would make results machine-specific); individual
+		// tests opt in to the remote catalog explicitly.
 		catalogRepo: null,
 		webDistDir,
 		advantageScopeDistDir,
@@ -200,6 +201,16 @@ export async function withApp<T>(
 		baseUrl: "http://localhost:4000",
 		idleStopMinutes: 30,
 		containerAutoStart: false,
+		adminEmails: [],
+		adminUsernames: [],
+		githubClientId: "",
+		githubClientSecret: "",
+		googleClientId: "",
+		googleClientSecret: "",
+		auth0Domain: "",
+		auth0ClientId: "",
+		auth0ClientSecret: "",
+		auth0Audience: "",
 		portAvailable: options.dockerRunner ? async () => true : undefined,
 		...options,
 	});

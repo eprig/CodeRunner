@@ -167,7 +167,12 @@ describe("audit log", () => {
 				.query("SELECT * FROM audit_log WHERE action = 'allowlist.add'")
 				.all() as AuditLogEntry[];
 			expect(rows.length).toBe(1);
-			expect(rows[0]?.target_id).toBe("test@example.com");
+
+			// Adding a person now creates a roster row; the event targets that row.
+			const user = app.storage.db
+				.query("SELECT id FROM user WHERE email = ?")
+				.get("test@example.com") as { id: string };
+			expect(rows[0]?.target_id).toBe(user.id);
 		});
 	});
 

@@ -24,6 +24,8 @@ Record active architecture decisions here.
 - [`049-startup-gradle-cache-prune.md`](049-startup-gradle-cache-prune.md) — at each start the control plane deletes the Gradle caches of workspaces idle longer than `GRADLE_CACHE_PRUNE_DAYS` (default 14), so the data disk tracks recently active students.
 - [`050-repo-sourced-lesson-modules.md`](050-repo-sourced-lesson-modules.md) — a catalog module may point at its own public GitHub repo (`repo`) instead of a catalog `subdir`, with opt-in `preserveGit` to keep the lesson's `.git` for fork/commit workflows.
 - [`051-module-folders.md`](051-module-folders.md) — catalog `modules` arrays may contain recursive folder entries (`folder` + `order` + optional `description` + `modules`), rendered as multi-level collapsible sections; `order` positions modules and folders on one sibling scale while the arrays define hierarchy.
+- [`052-roster-scaffolding-and-additive-logins.md`](052-roster-scaffolding-and-additive-logins.md) — Better Auth's `user` row is the single roster row; admins scaffold students with one-time credentials and additional sign-in methods attach additively.
+- [`053-account-sign-in-method-management.md`](053-account-sign-in-method-management.md) — account pages manage username/password/OAuth methods without letting students remove their last sign-in or change roster-owned email.
 
 ## Archive
 

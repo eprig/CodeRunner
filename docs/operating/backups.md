@@ -14,8 +14,8 @@ container next starts.
 
 | Path | Contains | Back up? |
 |---|---|---|
-| `data/app.db` | Users, workspaces, sessions, port leases, audit log | **Yes** |
-| `data/allowlist.json` | Emails and domains permitted to sign in | **Yes** |
+| `data/app.db` | User roster, sign-in methods, workspaces, sessions, port leases, audit log | **Yes** |
+| `data/allowlist.json` | Domain rules permitted to sign in (legacy person entries are imported into the DB at startup) | **Yes** |
 | `data/users/*/project/` | Student Java source code | **Yes** |
 | `data/users/*/assets/` | Per-workspace AdvantageScope assets | **Yes** |
 | `data/users/*/home/` | Gradle cache, editor state, VS Code user data | No (regenerated) |

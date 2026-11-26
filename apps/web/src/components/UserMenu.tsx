@@ -1,4 +1,4 @@
-import { ChevronDown, LogOut, ShieldUser } from "lucide-react";
+import { ChevronDown, LogOut, ShieldUser, UserRound } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 interface UserMenuProps {
 	displayName: string;
-	email: string;
 	avatarUrl: string | null;
 	isAdmin: boolean;
 	layoutMenu?: ReactNode;
@@ -52,7 +51,7 @@ function Avatar({
 		<span
 			style={{ width: size, height: size }}
 			className={cn(
-				"inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-[11px] font-semibold text-white ring-1 ring-white/10",
+				"inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-indigo-500 to-fuchsia-500 text-[11px] font-semibold text-white ring-1 ring-white/10",
 				className,
 			)}
 		>
@@ -107,9 +106,12 @@ function navigateToAdmin() {
 	window.location.assign("/admin");
 }
 
+function navigateToAccount() {
+	window.location.assign("/account");
+}
+
 export function UserMenu({
 	displayName,
-	email,
 	avatarUrl,
 	isAdmin,
 	layoutMenu,
@@ -140,19 +142,33 @@ export function UserMenu({
 						>
 							{displayName}
 						</div>
-						<div className="truncate text-[11.5px] text-muted-foreground">
-							{guest ? `Guest · ends ${formatEndsAt(guest.endsAt)}` : email}
-						</div>
+						{guest && (
+							<div className="truncate text-[11.5px] text-muted-foreground">
+								Guest · ends {formatEndsAt(guest.endsAt)}
+							</div>
+						)}
 					</div>
 				</div>
 				<div className="p-1">
+					{!guest && (
+						<>
+							<DropdownMenuItem
+								onClick={navigateToAccount}
+								className="gap-2.5 px-2.5 py-2 text-[12.5px]"
+							>
+								<UserRound className="size-3.75 text-muted-foreground" />
+								Account
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+						</>
+					)}
 					{isAdmin ? (
 						<>
 							<DropdownMenuItem
 								onClick={navigateToAdmin}
 								className="gap-2.5 px-2.5 py-2 text-[12.5px]"
 							>
-								<ShieldUser className="size-[15px] text-muted-foreground" />
+								<ShieldUser className="size-3.75 text-muted-foreground" />
 								Admin
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
@@ -165,7 +181,7 @@ export function UserMenu({
 						}
 						className="gap-2.5 px-2.5 py-2 text-[12.5px]"
 					>
-						<LogOut className="size-[15px] text-muted-foreground" />
+						<LogOut className="size-3.75 text-muted-foreground" />
 						{guest ? "Leave" : "Logout"}
 					</DropdownMenuItem>
 				</div>
