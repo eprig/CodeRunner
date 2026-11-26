@@ -348,7 +348,10 @@ export function SwitchProjectDialog({
 			const target: ProjectSwapKind =
 				next.kind === "import"
 					? { kind: "import", url: next.url }
-					: { kind: "lesson", moduleId: next.module.id };
+					: {
+							kind: "lesson",
+							moduleId: next.module.id,
+						};
 			startSwap(target);
 		},
 		[startSwap],

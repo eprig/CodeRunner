@@ -57,6 +57,7 @@ export const sessionResponseSchema = z.object({
 		slug: workspaceSlugSchema,
 		currentModule: z.string().nullable(),
 		currentModuleKind: lessonModuleKindSchema.nullable(),
+		wpilib_version: z.string().nullable(),
 		projectEmpty: z.boolean(),
 	}),
 	demo: z.boolean().optional(),
@@ -453,6 +454,15 @@ export const lessonModuleRepoSchema = z
 		"Repo owner and name cannot be only dots.",
 	);
 
+export const wpilibVersionSchema = z
+	.string()
+	.regex(
+		/^v\d{4}\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+		"WPILib version must be a vYYYY.major.minor release tag.",
+	);
+
+export const STABLE_WPILIB_YEAR = 2026;
+
 /** Display label for a folder in the Switch Project picker. */
 export const lessonFolderNameSchema = z
 	.string()
@@ -472,6 +482,7 @@ export const lessonModuleSchema = z
 		preserveGit: z.boolean().default(false),
 		kind: lessonModuleKindSchema,
 		order: z.number().int(),
+		wpilib_version: wpilibVersionSchema.optional(),
 	})
 	.superRefine((module, ctx) => {
 		const hasSubdir = module.subdir !== undefined;

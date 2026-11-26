@@ -108,6 +108,11 @@ init script is applied non-destructively that:
 The student's `build.gradle` is untouched; the init script operates at the
 Gradle API level and is invisible in the editor.
 
+After the project is copied into the workspace, CodeRunner also detects its
+declared Java version and updates the editor and Gradle settings accordingly.
+For example, projects declaring Java 25 use the bundled Java 25 runtime without
+requiring changes to the repository.
+
 ## Constraints and limits
 
 | Constraint | Value |

@@ -5,16 +5,26 @@
 GRADLE_USER_HOME="${HOME}/.gradle"
 EXTENSIONS_DIR="${HOME}/extensions"
 MACHINE_SETTINGS="${HOME}/data/Machine/settings.json"
-PROJECT_SETTINGS="/workspace/project/.vscode/settings.json"
+PROJECT_DIR="/workspace/project"
+PROJECT_SETTINGS="${PROJECT_DIR}/.vscode/settings.json"
 SIM_LOG_FILE="${SIM_LOG_FILE:-${HOME}/sim.log}"
 DEFAULT_JDT_LS_VMARGS="-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xms64m -Xmx512m -XX:ReservedCodeCacheSize=96m -Xlog:disable"
 DEFAULT_GRADLE_JVMARGS="-Xms64m -Xmx384m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=96m -XX:+HeapDumpOnOutOfMemoryError -XX:ActiveProcessorCount=2 -Dfile.encoding=UTF-8"
 TOOLING_JAVA_HOME="${JDK_HOME:-/usr/lib/jvm/jdk-21}"
 PROJECT_JAVA_HOME="${PROJECT_JAVA_HOME:-/usr/lib/jvm/jdk-17}"
+PROJECT_JAVA_RUNTIME="JavaSE-17"
 LEGACY_CODERUNNER_JDT_HOME="/usr/lib/jvm/jdk-21"
 LEGACY_GRADLE_ARGS="--no-daemon --no-watch-fs --max-workers=2"
 CODERUNNER_JDT_LS_VMARGS="${CODERUNNER_JDT_LS_VMARGS:-${DEFAULT_JDT_LS_VMARGS}}"
 CODERUNNER_GRADLE_JVMARGS="${CODERUNNER_GRADLE_JVMARGS:-${DEFAULT_GRADLE_JVMARGS}}"
+
+if [[ -f "${PROJECT_DIR}/build.gradle" ]] &&
+	grep -Eq 'JavaVersion\.VERSION_25|sourceCompatibility[[:space:]]*=[[:space:]]*25|targetCompatibility[[:space:]]*=[[:space:]]*25' \
+		"${PROJECT_DIR}/build.gradle" &&
+	[[ -x /usr/lib/jvm/jdk-25/bin/java ]]; then
+	PROJECT_JAVA_HOME="/usr/lib/jvm/jdk-25"
+	PROJECT_JAVA_RUNTIME="JavaSE-25"
+fi
 
 mkdir -p "${GRADLE_USER_HOME}" "${EXTENSIONS_DIR}" "${HOME}/data/Machine" "${HOME}/data/User"
 
@@ -39,6 +49,9 @@ if [[ -d /opt/frc-extensions-cache ]]; then
     lsiown -R abc:abc "${EXTENSIONS_DIR}"
   fi
 fi
+
+/usr/local/bin/reconcile-frc-wpilib-extension /workspace/project "${EXTENSIONS_DIR}"
+/usr/local/bin/reconcile-frc-java-runtime /workspace/project
 
 GRADLE_PROPERTIES="${GRADLE_USER_HOME}/gradle.properties"
 if [[ ! -e "${GRADLE_PROPERTIES}" ]]; then
@@ -73,6 +86,8 @@ merge_vscode_settings() {
     --arg toolingJavaHome "${TOOLING_JAVA_HOME}" \
     --arg legacyJdtJavaHome "${LEGACY_CODERUNNER_JDT_HOME}" \
     --arg projectJavaHome "${PROJECT_JAVA_HOME}" \
+    --arg projectJavaRuntime "${PROJECT_JAVA_RUNTIME}" \
+    --arg managedProjectJavaHome "/usr/lib/jvm/jdk-25" \
     --arg gradleJvmargs "${CODERUNNER_GRADLE_JVMARGS}" \
     --arg defaultGradleJvmargs "${DEFAULT_GRADLE_JVMARGS}" \
     --arg legacyGradleArgs "${LEGACY_GRADLE_ARGS}" \
@@ -100,16 +115,27 @@ merge_vscode_settings() {
         then del(."java.jdt.ls.java.home")
         else .
         end
-      | ."java.import.gradle.java.home" //= $projectJavaHome
-      | ."java.configuration.runtimes" //= [
+      | ."java.import.gradle.java.home" = $projectJavaHome
+      | if $projectJavaRuntime == "JavaSE-25" then
+          ."java.jdt.ls.java.home" = $projectJavaHome
+        elif ."java.jdt.ls.java.home" == $managedProjectJavaHome then
+          del(."java.jdt.ls.java.home")
+        else .
+        end
+      | ."java.configuration.runtimes" = [
           {
             "name": "JavaSE-17",
-            "path": $projectJavaHome,
-            "default": true
+            "path": "/usr/lib/jvm/jdk-17",
+            "default": ($projectJavaRuntime == "JavaSE-17")
           },
           {
             "name": "JavaSE-21",
             "path": $toolingJavaHome
+          },
+          {
+            "name": "JavaSE-25",
+            "path": "/usr/lib/jvm/jdk-25",
+            "default": ($projectJavaRuntime == "JavaSE-25")
           }
         ]
       | ."java.gradle.buildServer.enabled" //= "off"

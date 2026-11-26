@@ -45,4 +45,5 @@ export {
 	previewDocumentsResponseSchema,
 	runServerMessageSchema,
 	simStatusResponseSchema,
+	wpilibVersionSchema,
 } from "@frc-coderunner/contracts";

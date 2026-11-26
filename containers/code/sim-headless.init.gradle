@@ -68,5 +68,24 @@ allprojects {
                 )
             }
         }
+
+        def sourceSets = project.extensions.findByName('sourceSets')
+        if (sourceSets != null && sourceSets.findByName('main') != null &&
+                project.tasks.findByName('jar') != null) {
+            project.tasks.register('writeSimulationClasspath') {
+                dependsOn project.tasks.named('jar')
+                doLast {
+                    def runtimeFiles = sourceSets.main.runtimeClasspath.files
+                    def jarFile = project.tasks.named('jar').get().archiveFile.get().asFile
+                    def classpath = (runtimeFiles + [jarFile])
+                        .collect { it.absolutePath }
+                        .unique()
+                        .join(File.pathSeparator)
+                    def output = project.layout.buildDirectory.file('sim/classpath.txt').get().asFile
+                    output.parentFile.mkdirs()
+                    output.text = classpath + System.lineSeparator()
+                }
+            }
+        }
     }
 }

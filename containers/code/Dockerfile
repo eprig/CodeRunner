@@ -77,6 +77,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 ARG TARGETARCH
 ARG JDK17_VERSION=17.0.15+6
 ARG JDK21_VERSION=21.0.12.1+1
+ARG JDK25_VERSION=25.0.5+8
 
 RUN case "${TARGETARCH}" in \
         amd64) JDK_ARCH=x64 ;; \
@@ -95,21 +96,30 @@ RUN case "${TARGETARCH}" in \
     && wget -q "https://github.com/adoptium/temurin21-binaries/releases/download/${JDK21_TAG}/${JDK21_FILE}" -O /tmp/jdk21.tar.gz \
     && tar xzf /tmp/jdk21.tar.gz -C /usr/lib/jvm \
     && rm /tmp/jdk21.tar.gz \
-    && ln -s "/usr/lib/jvm/jdk-${JDK21_VERSION}" /usr/lib/jvm/jdk-21
+    && ln -s "/usr/lib/jvm/jdk-${JDK21_VERSION}" /usr/lib/jvm/jdk-21 \
+    && JDK25_TAG="jdk-$(echo "${JDK25_VERSION}" | sed 's/+/%2B/')" \
+    && JDK25_FILE="OpenJDK25U-jdk_${JDK_ARCH}_linux_hotspot_$(echo "${JDK25_VERSION}" | tr + _).tar.gz" \
+    && wget -q "https://github.com/adoptium/temurin25-binaries/releases/download/${JDK25_TAG}/${JDK25_FILE}" -O /tmp/jdk25.tar.gz \
+    && tar xzf /tmp/jdk25.tar.gz -C /usr/lib/jvm \
+    && rm /tmp/jdk25.tar.gz \
+    && ln -s "/usr/lib/jvm/jdk-${JDK25_VERSION}" /usr/lib/jvm/jdk-25
 
 ENV JAVA_HOME=/usr/lib/jvm/jdk-17
 ENV JDK_HOME=/usr/lib/jvm/jdk-21
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-RUN java -version && "${JDK_HOME}/bin/java" -version
+RUN java -version && "${JDK_HOME}/bin/java" -version && /usr/lib/jvm/jdk-25/bin/java -version
 
 # ── Scripts ────────────────────────────────────────────────────────────
 COPY containers/code/start-sim.sh containers/code/run-sim.sh containers/code/stop-sim.sh /usr/local/bin/
 COPY containers/code/reconcile-extensions.sh /usr/local/bin/reconcile-frc-extensions
+COPY containers/code/reconcile-wpilib-extension.sh /usr/local/bin/reconcile-frc-wpilib-extension
+COPY containers/code/reconcile-java-runtime.sh /usr/local/bin/reconcile-frc-java-runtime
 COPY containers/code/sim-headless.init.gradle /usr/local/share/frc/sim-headless.init.gradle
 
 RUN chmod +x /usr/local/bin/start-sim.sh /usr/local/bin/run-sim.sh /usr/local/bin/stop-sim.sh \
-             /usr/local/bin/reconcile-frc-extensions
+             /usr/local/bin/reconcile-frc-extensions /usr/local/bin/reconcile-frc-wpilib-extension \
+             /usr/local/bin/reconcile-frc-java-runtime
 
 # ── s6-overlay service definitions (additive to upstream) ─────────────
 # Adds init-frc-setup oneshot and overrides svc-vscodium-web run script.
