@@ -70,6 +70,8 @@ describe("ServerUpdate", () => {
 		expect(
 			screen.getByText(/Tags pull the prebuilt images from/),
 		).toHaveTextContent("ghcr.io/eprig");
+		expect(screen.queryByText("Image")).toBeNull();
+		expect(screen.queryByTestId("update-active-status")).toBeNull();
 
 		const branch = screen.getByTestId(
 			"update-branch-select",
@@ -182,5 +184,42 @@ describe("ServerUpdate", () => {
 		expect(await screen.findByText(/Running from source/)).toBeInTheDocument();
 		expect(screen.getByTestId("update-submit")).toBeDisabled();
 		expect(screen.queryByText(/Updates need a host checkout/)).toBeNull();
+	});
+
+	test("shows a spinner and status only while an update is running", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(() =>
+				Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							...status,
+							job: {
+								...status.job,
+								state: "running",
+								kind: "tag" as const,
+								ref: "v2.5.0",
+								message: "Pulling prebuilt images",
+								steps: [
+									{ label: "Prepare checkout", state: "done" },
+									{ label: "Build or pull images", state: "running" },
+								],
+							},
+						}),
+				}),
+			),
+		);
+
+		render(<ServerUpdate />);
+
+		const active = await screen.findByTestId("update-active-status");
+		expect(active).toHaveTextContent("Updating to release v2.5.0");
+		expect(active).toHaveTextContent("Pulling prebuilt images");
+		expect(active.querySelector("svg")).toHaveClass("animate-spin");
+		expect(screen.queryByText("Last update")).toBeNull();
+		expect(screen.queryByTestId("update-steps")).toBeNull();
+		expect(screen.getByTestId("update-submit")).toBeDisabled();
 	});
 });

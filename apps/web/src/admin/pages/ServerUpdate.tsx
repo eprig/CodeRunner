@@ -2,6 +2,7 @@ import type {
 	ServerUpdateKind,
 	ServerUpdateStatusResponse,
 } from "@frc-coderunner/contracts";
+import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,25 +28,6 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 			</span>
 			<span className="break-all text-sm">{children}</span>
 		</div>
-	);
-}
-
-function StateBadge({ state }: { state: string }) {
-	const tone =
-		state === "succeeded"
-			? "bg-green-900 text-green-300"
-			: state === "failed"
-				? "bg-red-900 text-red-300"
-				: state === "idle"
-					? "bg-zinc-800 text-zinc-400"
-					: "bg-yellow-900 text-yellow-300";
-	return (
-		<span
-			className={`rounded px-2 py-0.5 text-xs ${tone}`}
-			data-testid="update-job-state"
-		>
-			{state}
-		</span>
 	);
 }
 
@@ -156,7 +138,6 @@ export function ServerUpdate() {
 							"unknown"
 						)}
 					</Detail>
-					<Detail label="Image">{repo.image ?? "unknown"}</Detail>
 					<Detail label="Host checkout">
 						{repo.hostDir ?? "not detected"}
 					</Detail>
@@ -260,51 +241,22 @@ export function ServerUpdate() {
 				</CardContent>
 			</Card>
 
-			<Card>
-				<CardHeader className="pb-2">
-					<CardTitle className="flex items-center gap-2">
-						Last update <StateBadge state={job.state} />
-					</CardTitle>
-				</CardHeader>
-				<CardContent className="space-y-3 text-sm">
-					{job.ref && (
-						<p>
-							{job.kind === "tag" ? "Tag" : "Branch"}{" "}
-							<code className="font-mono">{job.ref}</code>
-						</p>
-					)}
-					{job.message && <p>{job.message}</p>}
-					{(job.startedAt || job.finishedAt) && (
-						<p className="text-xs text-muted-foreground">
-							{job.startedAt ? `Started ${job.startedAt}` : ""}
-							{job.finishedAt ? ` · Finished ${job.finishedAt}` : ""}
-						</p>
-					)}
-					{job.steps.length > 0 && (
-						<ol className="space-y-1" data-testid="update-steps">
-							{job.steps.map((step) => (
-								<li key={step.label} className="flex gap-2">
-									<span className="w-24 shrink-0 text-xs uppercase text-muted-foreground">
-										{step.state}
-									</span>
-									<span>{step.label}</span>
-									{step.detail && (
-										<span className="text-muted-foreground">
-											— {step.detail}
-										</span>
-									)}
-								</li>
-							))}
-						</ol>
-					)}
-					{active && (
-						<p className="text-yellow-300">
-							Update in progress. This page will reconnect when the server comes
-							back.
-						</p>
-					)}
-				</CardContent>
-			</Card>
+			{active && (
+				<div
+					className="flex items-center gap-2 rounded border border-yellow-900 bg-yellow-950/40 p-3 text-sm text-yellow-200"
+					role="status"
+					data-testid="update-active-status"
+				>
+					<Loader2 className="size-4 animate-spin" aria-hidden="true" />
+					<span>
+						Updating
+						{job.ref
+							? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
+							: ""}
+						{job.message ? ` — ${job.message}` : ""}
+					</span>
+				</div>
+			)}
 		</div>
 	);
 }

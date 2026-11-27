@@ -77,6 +77,11 @@ control container.
 - Demo mode returns a canned, read-only status (sample repo, commit, refs, and
   steps) so the tab can be explored without a deployment. `POST` is rejected
   with 403, and the page explains that no server changes will be made.
+- The UI does not render the resolved image reference: it is always derived from
+  the same tag shown as the version, for both prebuilt releases and branch
+  builds. While a job is `starting` or `running`, the page shows one compact
+  spinner with the current step message; idle, succeeded, and failed jobs show
+  no history panel.
 - Branch builds use the helper's *starting* image's `coderunner` CLI, so a
   single update cannot depend on code from the branch being deployed. The next
   update runs from the newly built image.
