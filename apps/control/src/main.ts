@@ -48,12 +48,24 @@ if (inspection.containerized) {
 	// Stamp workspace containers with the control plane's compose project so they
 	// group under it in Portainer / `docker compose ls`. Null when unread.
 	configInput.composeProject = inspection.composeProject;
+	// Host checkout path for the admin updater. Only pass the derived value when
+	// CODERUNNER_UPDATE_REPO_DIR wasn't set — loadControlConfig gives env vars
+	// lower precedence than explicit inputs (see above).
+	if (!Bun.env.CODERUNNER_UPDATE_REPO_DIR?.trim()) {
+		configInput.hostRepoDir = inspection.composeWorkingDir;
+	}
 	// Leave containerUser absent when the data dir is root-owned (undefined) so
 	// loadControlConfig's root-guard fires instead of silently running
 	// workspaces as root.
 	if (inspection.containerUser !== undefined) {
 		configInput.containerUser = inspection.containerUser;
 	}
+} else if (!Bun.env.CODERUNNER_UPDATE_REPO_DIR?.trim()) {
+	// From-source runs (`dev:control`, `start`) execute from the checkout root.
+	// Use it for the host repo and read provenance from git/.env instead of a
+	// container that doesn't exist in this mode.
+	configInput.hostRepoDir = process.cwd();
+	configInput.updateMetadataSource = "local";
 }
 
 const app = await createApp(configInput);

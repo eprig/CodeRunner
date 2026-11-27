@@ -38,7 +38,10 @@ function containerizedFixture(): DockerInspectContainer {
 		],
 		// bridge is a default network and must be filtered out.
 		networks: ["bridge", "coderunner"],
-		labels: { "com.docker.compose.project": "coderunner" },
+		labels: {
+			"com.docker.compose.project": "coderunner",
+			"com.docker.compose.project.working_dir": "/srv/coderunner",
+		},
 	});
 }
 
@@ -68,6 +71,7 @@ describe("selfInspect — host (not containerized)", () => {
 			containerNetwork: null,
 			containerUser: undefined,
 			composeProject: null,
+			composeWorkingDir: null,
 			autoDetected: {
 				hostDataDir: false,
 				containerNetwork: false,
@@ -101,6 +105,7 @@ describe("selfInspect — containerized derivation", () => {
 			containerNetwork: "coderunner",
 			containerUser: "1000:1000",
 			composeProject: "coderunner",
+			composeWorkingDir: "/srv/coderunner",
 			autoDetected: {
 				hostDataDir: true,
 				containerNetwork: true,
@@ -215,6 +220,7 @@ describe("selfInspect — env overrides win", () => {
 			// Grouping must not depend on whether the other three fields happen
 			// to be env-overridden.
 			composeProject: "coderunner",
+			composeWorkingDir: "/srv/coderunner",
 			autoDetected: {
 				hostDataDir: false,
 				containerNetwork: false,

@@ -40,6 +40,10 @@ export type ControlConfig = {
 	codeDiskReadLimit: string | null;
 	containerNetwork: string | null;
 	composeProject: string | null;
+	/** Host-side checkout directory used by the admin server updater (decision 052). */
+	hostRepoDir: string | null;
+	/** Where update provenance comes from: container labels, or a local checkout. */
+	updateMetadataSource: "container" | "local";
 	hostDataDir: string | null;
 	simPortRange: PortRange;
 	vscodePortRange: PortRange;
@@ -399,6 +403,9 @@ export function loadControlConfig(
 		),
 		containerNetwork,
 		composeProject: input.composeProject ?? null,
+		hostRepoDir:
+			input.hostRepoDir ?? (Bun.env.CODERUNNER_UPDATE_REPO_DIR?.trim() || null),
+		updateMetadataSource: input.updateMetadataSource ?? "container",
 		hostDataDir: parseHostDataDir(
 			input.hostDataDir ?? Bun.env.FRC_HOST_DATA_DIR ?? null,
 		),

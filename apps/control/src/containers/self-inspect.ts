@@ -78,6 +78,12 @@ export type SelfInspectResult = {
 	 * when the inspect that reads it fails on the fully-overridden path.
 	 */
 	composeProject: string | null;
+	/**
+	 * Host-side compose project directory (`com.docker.compose.project.working_dir`).
+	 * The admin server updater needs it to find the host's repo checkout; null
+	 * when this container wasn't started by compose (decision 052).
+	 */
+	composeWorkingDir: string | null;
 	/** Which fields came from inspection (vs. an explicit env override). */
 	autoDetected: {
 		hostDataDir: boolean;
@@ -115,10 +121,12 @@ export async function selfInspect(
 	// plane's project no matter how the deployment is configured; it is cosmetic,
 	// so unlike the three derived fields a failed inspect here is not fatal.
 	if (!needHostDataDir && !needNetwork && !needUser) {
+		const labels = await readComposeLabels(inspect, hostname());
 		return {
 			...notDerived(envHostDataDir, envContainerNetwork, envContainerUser),
 			containerized: true,
-			composeProject: await readComposeProject(inspect, hostname()),
+			composeProject: deriveComposeProject(labels),
+			composeWorkingDir: deriveComposeWorkingDir(labels),
 		};
 	}
 
@@ -143,12 +151,14 @@ export async function selfInspect(
 		? deriveContainerUser(stat, dataDir)
 		: (envContainerUser ?? undefined);
 
+	const labels = container.Config?.Labels ?? {};
 	return {
 		containerized: true,
 		hostDataDir,
 		containerNetwork,
 		containerUser,
-		composeProject: deriveComposeProject(container),
+		composeProject: deriveComposeProject(labels),
+		composeWorkingDir: deriveComposeWorkingDir(labels),
 		autoDetected: {
 			hostDataDir: needHostDataDir,
 			containerNetwork: needNetwork,
@@ -175,6 +185,7 @@ function notDerived(
 		containerNetwork,
 		containerUser: containerUser ?? undefined,
 		composeProject: null,
+		composeWorkingDir: null,
 		autoDetected: {
 			hostDataDir: false,
 			containerNetwork: false,
@@ -228,23 +239,28 @@ function deriveNetwork(container: DockerInspectContainer): string {
  * Desktop is a convenience, so it degrades to "ungrouped" (which the startup
  * config log reports) instead of failing startup.
  */
-async function readComposeProject(
+async function readComposeLabels(
 	inspect: (id: string) => Promise<DockerInspectContainer | null>,
 	id: string,
-): Promise<string | null> {
+): Promise<Record<string, string>> {
 	try {
 		const container = await inspect(id);
-		return container ? deriveComposeProject(container) : null;
+		return container?.Config?.Labels ?? {};
 	} catch {
-		return null;
+		return {};
 	}
 }
 
-function deriveComposeProject(
-	container: DockerInspectContainer,
-): string | null {
-	const project = container.Config?.Labels?.["com.docker.compose.project"];
+function deriveComposeProject(labels: Record<string, string>): string | null {
+	const project = labels["com.docker.compose.project"];
 	return project ? project : null;
+}
+
+function deriveComposeWorkingDir(
+	labels: Record<string, string>,
+): string | null {
+	const dir = labels["com.docker.compose.project.working_dir"];
+	return dir ? dir : null;
 }
 
 function deriveContainerUser(

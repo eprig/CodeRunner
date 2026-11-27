@@ -8,7 +8,8 @@ type Tab =
 	| "users"
 	| "classrooms"
 	| "allowlist"
-	| "audit-log";
+	| "audit-log"
+	| "server-update";
 
 const tabs: Array<{ id: Tab; label: string }> = [
 	{ id: "dashboard", label: "Dashboard" },
@@ -18,6 +19,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
 	{ id: "classrooms", label: "Classrooms" },
 	{ id: "allowlist", label: "Allowlist" },
 	{ id: "audit-log", label: "Audit Log" },
+	{ id: "server-update", label: "Update" },
 ];
 
 export function AdminLayout({

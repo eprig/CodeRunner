@@ -1,3 +1,4 @@
+import { hostname as osHostname } from "node:os";
 import type {
 	AuthProvidersResponse,
 	WorkspaceId,
@@ -29,6 +30,7 @@ import { createCatalogSource } from "./catalog";
 import { ClassroomSweeper } from "./classroom-sweeper";
 import { FailedAttemptLimiter } from "./classrooms";
 import { LocalDockerRuntimeProvider } from "./containers";
+import { defaultDockerRunner } from "./containers/docker-client";
 import { GamepadSessions } from "./gamepad";
 import { pruneIdleGradleCaches } from "./gradle-cache-prune";
 import { HalSimBridge } from "./halsim";
@@ -46,6 +48,7 @@ import {
 import { DockerStatsPoller } from "./metrics-collector";
 import { Nt4AutoChooserBridge } from "./nt4-auto";
 import { RunManager } from "./runs";
+import type { ServerUpdateDeps } from "./server-update";
 import { createStorage } from "./storage";
 import { deleteUserAndWorkspace } from "./user-deletion";
 
@@ -128,6 +131,7 @@ export async function createApp(
 		portAvailable,
 		blockDevices,
 		upstreamFetch: configuredUpstreamFetch,
+		serverUpdateFetch,
 		runCommandFactory,
 		halsimWebSocketFactory,
 		nt4AutoWebSocketFactory,
@@ -237,11 +241,21 @@ export async function createApp(
 		stopWorkspace,
 	};
 
+	const serverUpdate: ServerUpdateDeps = {
+		config: storage.config,
+		dockerRunner: dockerRunner ?? defaultDockerRunner,
+		fetch: serverUpdateFetch,
+		// Compose sets the container hostname to its short ID, so this names
+		// the running control container for `docker inspect` and the updater.
+		selfContainerId:
+			Bun.env.CODERUNNER_CONTROL_CONTAINER?.trim() || osHostname(),
+	};
 	const adminCtx = {
 		storage,
 		runs,
 		runtimeProvider,
 		closeWorkspaceSockets: websocket.closeWorkspaceSockets,
+		serverUpdate,
 	};
 	const classroomSweeper = new ClassroomSweeper({
 		storage,

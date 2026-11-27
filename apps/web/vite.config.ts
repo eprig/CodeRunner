@@ -25,7 +25,10 @@ export default defineConfig({
 			"/pathplanner": controlPlane,
 			"/coderunner-icon.png": controlPlane,
 			"/favicon.ico": controlPlane,
-			"^/admin/(assets|allowlist|audit-log|users|containers|workspaces|config|status|classrooms)(/.*)?$":
+			// Keep this list in sync with every `/admin/...` API prefix. Anything
+			// missing here falls through to Vite's SPA fallback and the browser
+			// tries to parse index.html as JSON.
+			"^/admin/(assets|allowlist|audit-log|users|containers|workspaces|config|status|classrooms|server-update)(/.*)?$":
 				proxyOpts,
 			"^/u/[^/]+/(api|ws|sim|vscode|assets|coderunner-icon\\.png|favicon\\.ico)(/.*)?$":
 				proxyOpts,

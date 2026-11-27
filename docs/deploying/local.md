@@ -154,7 +154,30 @@ step below.
 
 :::
 
-### 1. Choose the new version
+### Option A: Admin → Update (browser)
+
+If this deployment was started from a git checkout with `docker compose`, an
+admin can open **Admin → Update**, choose a published release tag or a branch
+from the repository shown on the page, and confirm. Tags pull the prebuilt
+images; branches fetch, check out, and build from the host checkout. The page
+shows the running commit, the host checkout path, and the progress of the last
+update. If no checkout is detected, set `CODERUNNER_UPDATE_REPO_DIR` in `.env`
+to the directory containing `docker-compose.yml`, then recreate the control
+container.
+
+The page needs network access to the GitHub API to list tags and branches;
+`GITHUB_TOKEN` in `.env` avoids anonymous rate limits. Updates finish with
+`docker compose up -d` from the host checkout, so the update helper's image
+must include the Docker Compose plugin. When upgrading from a release older
+than this feature, use the CLI flow once to install such an image; browser
+updates work from then on. The manual flow works without GitHub API access.
+See
+[decision 052](https://github.com/mathewdunne/CodeRunner/blob/main/docs/decisions/052-admin-server-updates.md)
+for details.
+
+### Option B: CLI
+
+#### 1. Choose the new version
 
 Set `CODERUNNER_TAG` in `.env` to the new release tag, for example:
 
@@ -164,7 +187,7 @@ CODERUNNER_TAG=v2.5.0
 
 If you intentionally track `latest`, leave the existing value unchanged.
 
-### 2. Pull the new images and restart the control plane
+#### 2. Pull the new images and restart the control plane
 
 ```bash
 docker compose pull
@@ -175,7 +198,7 @@ docker compose up -d
 student's workspace container on the new workspace image the next time that
 student connects. No `rebuild-workspaces` step is needed.
 Student project files are bind-mounted and survive.
-### 3. Verify the update
+#### 3. Verify the update
 
 ```bash
 curl http://localhost:4000/healthz

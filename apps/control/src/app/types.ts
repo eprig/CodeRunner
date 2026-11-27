@@ -53,6 +53,8 @@ export type ControlAppOptions = ControlConfigInput & {
 	portAvailable?: ((port: number) => Promise<boolean>) | undefined;
 	blockDevices?: string[] | undefined;
 	upstreamFetch?: HttpFetch | undefined;
+	/** Fake GitHub API transport for admin server-update tests. */
+	serverUpdateFetch?: HttpFetch | undefined;
 	runCommandFactory?: RunCommandFactory | undefined;
 	halsimWebSocketFactory?: HalSimWebSocketFactory | undefined;
 	nt4AutoWebSocketFactory?: Nt4AutoWebSocketFactory | undefined;

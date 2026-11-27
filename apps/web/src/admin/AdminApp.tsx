@@ -5,6 +5,7 @@ import { AuditLog } from "./pages/AuditLog";
 import { Classrooms } from "./pages/Classrooms";
 import { Containers } from "./pages/Containers";
 import { Dashboard } from "./pages/Dashboard";
+import { ServerUpdate } from "./pages/ServerUpdate";
 import { Users } from "./pages/Users";
 import { Workspaces } from "./pages/Workspaces";
 
@@ -20,6 +21,7 @@ export function AdminApp() {
 			{tab === "classrooms" && <Classrooms />}
 			{tab === "allowlist" && <Allowlist />}
 			{tab === "audit-log" && <AuditLog />}
+			{tab === "server-update" && <ServerUpdate />}
 		</AdminLayout>
 	);
 }

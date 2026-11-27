@@ -30,6 +30,7 @@ Subcommands:
   users <cmd> [args]       Manage user roles (list/promote/demote).
   audit-prune [args]       Prune audit log entries older than a given date.
   rebuild-workspaces       Remove managed workspace containers and clear their leases.
+  update-server            Run the admin-triggered self-update helper (needs host mounts).
   cleanup [args]           Remove stopped managed containers.
   migrate [apply|status]   Run or check the status of database migrations.
   help                     Show this message.
@@ -74,6 +75,10 @@ audit-prune)
 rebuild-workspaces)
 	shift
 	exec bun scripts/rebuild-workspaces.ts "$@"
+	;;
+update-server)
+	shift
+	exec bun scripts/update-server.ts "$@"
 	;;
 cleanup)
 	shift

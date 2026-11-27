@@ -13,6 +13,7 @@
 # See docs/decisions/031-containerized-control-plane.md.
 
 ARG BUN_VERSION=1.3.13
+ARG COMPOSE_VERSION=2.39.2
 
 # ── Stage 1: web shell build ───────────────────────────────────────────
 FROM oven/bun:${BUN_VERSION} AS web-build
@@ -129,13 +130,31 @@ COPY --from=ascope-dist / /ascope-dist
 # ── Stage 5: runtime (default build target) ────────────────────────────
 FROM oven/bun:${BUN_VERSION}
 
-# Docker CLI only — the daemon is the host's, reached through the bind-mounted
-# /var/run/docker.sock (docker-out-of-docker; workspace containers are
-# siblings). curl serves the compose healthcheck.
+# Docker CLI plus the Compose plugin — the daemon is the host's, reached
+# through the bind-mounted /var/run/docker.sock (docker-out-of-docker;
+# workspace containers are siblings). curl serves the compose healthcheck.
+# The plugin lets the admin update helper finish with the same
+# `docker compose up -d` an operator would run, instead of hand-recreating the
+# control container. Pin the binary and verify its published checksum; both
+# architectures are built natively in release.yml.
+# git is also here for the update helper's branch checkout in the host repo.
 COPY --from=docker:27.5.1-cli /usr/local/bin/docker /usr/local/bin/docker
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+ARG COMPOSE_VERSION
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) arch=x86_64; sum=a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 ;; \
+      arm64) arch=aarch64; sum=54488fffb60782f3c8787a48b95ed15f49f5a3a85f4105304bd46db5edd9db61 ;; \
+      *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    apt-get update -qq; \
+    apt-get install -y --no-install-recommends curl ca-certificates git; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${arch}" -o /tmp/docker-compose; \
+    echo "${sum}  /tmp/docker-compose" | sha256sum -c -; \
+    install -m 0755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose; \
+    rm /tmp/docker-compose
 
 WORKDIR /app
 # Manifests before the install so the production node_modules layer caches

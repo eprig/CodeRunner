@@ -194,6 +194,21 @@ cap and active container count with an inline editor.
 
 ---
 
+## Server updates
+
+**Admin → Update** shows the running image's repository, commit, version, and
+host checkout path, plus the available release tags and branches. Selecting a
+tag pulls the prebuilt images; selecting a branch builds both images from that
+branch in the host checkout. Either choice recreates student workspace
+containers and the control container, so schedule it when no class is active.
+
+The tab is read-only when no host checkout can be found. In that case set
+`CODERUNNER_UPDATE_REPO_DIR` in `.env` and recreate the control container; see
+[Local Deployment](../deploying/local.md#updating-coderunner-to-a-new-release).
+Update requests are recorded in the audit log as `server.update`.
+
+---
+
 ## Audit log
 
 All admin actions (promoting users, stopping containers, modifying the
@@ -217,6 +232,7 @@ allowlist, changing the concurrency cap) are recorded in the audit log.
 | `classroom.end` | Ending a classroom early ("End now") |
 | `classroom.cleanup` | Deleting an ended or expired classroom's guests (system) |
 | `classroom.guest_join` | A guest joining or rejoining a classroom |
+| `server.update` | Starting a server update from the admin Update tab |
 
 Each entry records the timestamp, the acting user (ID and email), the action,
 the target (kind and ID), and optional metadata.

@@ -782,3 +782,93 @@ export type PreviewDocument = z.infer<typeof previewDocumentSchema>;
 export type PreviewDocumentsResponse = z.infer<
 	typeof previewDocumentsResponseSchema
 >;
+
+/** Server self-update (decision 052). A ref is either a release tag whose
+ * prebuilt images are pulled, or a branch that is built from the host's own
+ * checkout of the CodeRunner repo. */
+export const serverUpdateKindSchema = z.enum(["tag", "branch"]);
+
+export const SERVER_UPDATE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/u;
+
+export const serverUpdateRequestSchema = z.object({
+	kind: serverUpdateKindSchema,
+	ref: z.string().regex(SERVER_UPDATE_REF_PATTERN),
+});
+
+export const serverUpdateJobStateSchema = z.enum([
+	"idle",
+	"starting",
+	"running",
+	"succeeded",
+	"failed",
+]);
+
+export const serverUpdateStepSchema = z.object({
+	label: z.string(),
+	state: z.enum(["pending", "running", "done", "failed"]),
+	detail: z.string().nullable().optional(),
+});
+
+export const serverUpdateRepoSchema = z.object({
+	/** `org.opencontainers.image.source` from the running image. */
+	url: z.string().nullable(),
+	/** GitHub owner/repo parsed from `url`, when it is a GitHub URL. */
+	slug: z.string().nullable(),
+	commit: z.string().nullable(),
+	version: z.string().nullable(),
+	image: z.string().nullable(),
+	imageNamespace: z.string().nullable(),
+	mode: z.enum(["prebuilt", "source", "unknown"]),
+	/** Container labels when deployed; local git/.env when running from source. */
+	source: z.enum(["container", "local"]),
+	/** Host-side checkout directory, discovered from the compose working_dir label. */
+	hostDir: z.string().nullable(),
+	/**
+	 * False on hosts with no checkout (e.g. a plain `docker run`) or on a
+	 * control image without the updater helper. The tab stays read-only then.
+	 */
+	updatable: z.boolean(),
+});
+
+export const serverUpdateStatusResponseSchema = z.object({
+	ok: z.literal(true),
+	/** Demo mode returns canned, read-only sample data. */
+	demo: z.boolean(),
+	repo: serverUpdateRepoSchema,
+	refs: z.object({
+		tags: z.array(z.string()),
+		branches: z.array(z.string()),
+		error: z.string().nullable(),
+	}),
+	job: z.object({
+		id: z.string().nullable(),
+		state: serverUpdateJobStateSchema,
+		kind: serverUpdateKindSchema.nullable(),
+		ref: z.string().nullable(),
+		startedAt: z.string().nullable(),
+		finishedAt: z.string().nullable(),
+		message: z.string().nullable(),
+		steps: z.array(serverUpdateStepSchema),
+	}),
+	/** True while the control container is expected to restart mid-update. */
+	restartExpected: z.boolean(),
+});
+
+export const serverUpdateAcceptedSchema = z.object({
+	ok: z.literal(true),
+	jobId: z.string(),
+	ref: z.string(),
+	kind: serverUpdateKindSchema,
+	image: z.string(),
+	message: z.string(),
+});
+
+export type ServerUpdateKind = z.infer<typeof serverUpdateKindSchema>;
+export type ServerUpdateRequest = z.infer<typeof serverUpdateRequestSchema>;
+export type ServerUpdateJobState = z.infer<typeof serverUpdateJobStateSchema>;
+export type ServerUpdateStep = z.infer<typeof serverUpdateStepSchema>;
+export type ServerUpdateRepo = z.infer<typeof serverUpdateRepoSchema>;
+export type ServerUpdateStatusResponse = z.infer<
+	typeof serverUpdateStatusResponseSchema
+>;
+export type ServerUpdateAccepted = z.infer<typeof serverUpdateAcceptedSchema>;

@@ -35,6 +35,7 @@ export type DockerInspectContainer = {
 		Status?: string;
 	};
 	Config?: {
+		Image?: string;
 		Labels?: Record<string, string>;
 	};
 	Mounts?: Array<{

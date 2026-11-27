@@ -9,6 +9,12 @@ import { requireAdmin } from "../auth/middleware";
 import { getLogger } from "../logging";
 import type { RunManager } from "../runs";
 import type { WorkspaceRuntimeProvider } from "../runtime";
+import {
+	getServerUpdateStatus,
+	type ServerUpdateDeps,
+	ServerUpdateError,
+	startServerUpdate,
+} from "../server-update";
 import type { AppStorage } from "../storage";
 import { deleteUserAndWorkspace } from "../user-deletion";
 import {
@@ -28,6 +34,7 @@ export type AdminRouteContext = {
 	runs: RunManager;
 	runtimeProvider: WorkspaceRuntimeProvider;
 	closeWorkspaceSockets: (workspaceId: WorkspaceId) => void;
+	serverUpdate: ServerUpdateDeps;
 };
 
 export async function handleAdminRoute(
@@ -476,6 +483,35 @@ export async function handleAdminRoute(
 			maxActiveContainers: storage.getEffectiveMaxActiveContainers(),
 			configDefault: storage.config.maxActiveContainers,
 		});
+	}
+
+	// --- Server self-update (decision 052) ---
+	if (url.pathname === "/admin/server-update" && request.method === "GET") {
+		return jsonResponse(await getServerUpdateStatus(ctx.serverUpdate));
+	}
+
+	if (url.pathname === "/admin/server-update" && request.method === "POST") {
+		let body: unknown;
+		try {
+			body = await request.json();
+		} catch {
+			return jsonResponse({ error: "Invalid JSON body." }, { status: 400 });
+		}
+		try {
+			const result = await startServerUpdate(ctx.serverUpdate, body);
+			recordAuditEvent(storage, {
+				actor: auditActor(adminResult),
+				action: "server.update",
+				target: { kind: "server", id: result.jobId },
+				metadata: { kind: result.kind, ref: result.ref, image: result.image },
+			});
+			return jsonResponse(result, { status: 202 });
+		} catch (error) {
+			if (error instanceof ServerUpdateError) {
+				return jsonResponse({ error: error.message }, { status: error.status });
+			}
+			return apiErrorResponse(error, "Server update failed to start.");
+		}
 	}
 
 	// --- Audit log ---
