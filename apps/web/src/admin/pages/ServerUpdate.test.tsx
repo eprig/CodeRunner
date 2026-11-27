@@ -201,7 +201,8 @@ describe("ServerUpdate", () => {
 								state: "running",
 								kind: "tag" as const,
 								ref: "v2.5.0",
-								message: "Pulling prebuilt images",
+								startedAt: new Date(Date.now() - 65_000).toISOString(),
+								message: "#9 [stage-1 6/9] RUN bun install 34.8s",
 								steps: [
 									{ label: "Prepare checkout", state: "done" },
 									{ label: "Build or pull images", state: "running" },
@@ -216,7 +217,8 @@ describe("ServerUpdate", () => {
 
 		const active = await screen.findByTestId("update-active-status");
 		expect(active).toHaveTextContent("Updating to release v2.5.0");
-		expect(active).toHaveTextContent("Pulling prebuilt images");
+		expect(active).toHaveTextContent(/1m/u);
+		expect(active).toHaveTextContent("#9 [stage-1 6/9] RUN bun install 34.8s");
 		expect(active.querySelector("svg")).toHaveClass("animate-spin");
 		expect(screen.queryByText("Last update")).toBeNull();
 		expect(screen.queryByTestId("update-steps")).toBeNull();

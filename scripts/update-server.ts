@@ -13,6 +13,7 @@
 
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { runDockerCli } from "../apps/control/src/containers/docker-client";
+import { parseBuildProgressLine } from "../apps/control/src/server-update-progress";
 
 const dockerPath = Bun.env.FRC_DOCKER_PATH ?? "docker";
 
@@ -103,6 +104,17 @@ async function saveJob(): Promise<void> {
 	const temp = `${jobFile}.${process.pid}.tmp`;
 	await writeFile(temp, `${JSON.stringify(job, null, 2)}\n`, "utf8");
 	await rename(temp, jobFile);
+}
+
+let lastProgressAt = 0;
+
+/** Mirror the CLI's build-step lines into the job file, at most once a second. */
+async function publishBuildProgress(line: string): Promise<void> {
+	const now = Date.now();
+	if (now - lastProgressAt < 1000) return;
+	lastProgressAt = now;
+	step(1, "running", line);
+	await saveJob();
 }
 
 function step(index: number, state: UpdateStep["state"], detail?: string) {
@@ -205,6 +217,32 @@ async function updateImages(): Promise<void> {
 	await saveJob();
 }
 
+async function consumeBuildOutput(stream: ReadableStream<Uint8Array>) {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		buffer += decoder.decode(value, { stream: true });
+		const lines = buffer.split(/[\r\n]+/u);
+		buffer = lines.pop() ?? "";
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			console.log(line);
+			const progress = parseBuildProgressLine(line);
+			if (progress) await publishBuildProgress(progress);
+		}
+	}
+	const tail = `${buffer}${decoder.decode()}`.trim();
+	if (tail) {
+		console.log(tail);
+		const progress = parseBuildProgressLine(tail);
+		if (progress) await publishBuildProgress(progress);
+	}
+	reader.releaseLock();
+}
+
 async function runBuild(
 	command: string,
 	args: string[],
@@ -214,10 +252,14 @@ async function runBuild(
 	const subprocess = Bun.spawn([command, ...args], {
 		cwd,
 		env: env as Record<string, string>,
-		stdout: "inherit",
-		stderr: "inherit",
+		stdout: "pipe",
+		stderr: "pipe",
 	});
-	const exitCode = await subprocess.exited;
+	const [, , exitCode] = await Promise.all([
+		consumeBuildOutput(subprocess.stdout),
+		consumeBuildOutput(subprocess.stderr),
+		subprocess.exited,
+	]);
 	if (exitCode !== 0) {
 		throw new Error(
 			`${command} ${args.join(" ")} failed with exit ${exitCode}`,

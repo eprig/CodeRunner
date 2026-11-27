@@ -81,7 +81,9 @@ control container.
   the same tag shown as the version, for both prebuilt releases and branch
   builds. While a job is `starting` or `running`, the page shows one compact
   spinner with the current step message; idle, succeeded, and failed jobs show
-  no history panel.
+  no history panel. For branch builds the helper mirrors Docker's step headers
+  and `DONE <duration>` lines from BuildKit/classic output into the job file,
+  throttled to one write per second; the page adds a live elapsed timer.
 - Branch builds use the helper's *starting* image's `coderunner` CLI, so a
   single update cannot depend on code from the branch being deployed. The next
   update runs from the newly built image.

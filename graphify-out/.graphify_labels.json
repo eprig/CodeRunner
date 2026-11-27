@@ -44,7 +44,6 @@
   "153": "030 Control Plane Hardening Pass",
   "157": "Build Ascope Lite",
   "160": "Use Container Status.test",
-  "162": "Code Container Defaults.test",
   "166": "Audit/Reconciliation Test Suite",
   "167": "Login.po",
   "168": "Cleanup Containers",

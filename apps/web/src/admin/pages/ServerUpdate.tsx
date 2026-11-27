@@ -31,12 +31,34 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 	);
 }
 
+function formatElapsed(startedAt: string | null, now: number): string | null {
+	const started = startedAt ? Date.parse(startedAt) : Number.NaN;
+	if (!Number.isFinite(started)) return null;
+	const seconds = Math.max(0, Math.floor((now - started) / 1000));
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const rest = seconds % 60;
+	if (hours > 0) return `${hours}h ${minutes}m ${rest}s`;
+	if (minutes > 0) return `${minutes}m ${rest}s`;
+	return `${rest}s`;
+}
+
 export function ServerUpdate() {
 	const { data, loading, error, refetch } = useAdminPoll(fetchStatus, 3000);
 	const [kind, setKind] = useState<ServerUpdateKind>("tag");
 	const [ref, setRef] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [now, setNow] = useState(() => Date.now());
+	const active =
+		data?.job.state === "starting" || data?.job.state === "running";
+
+	// Tick once a second while a job runs so the elapsed time stays live.
+	useEffect(() => {
+		if (!active) return;
+		const timer = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(timer);
+	}, [active]);
 
 	// Default to the newest tag, then the first branch, once refs arrive.
 	useEffect(() => {
@@ -85,8 +107,8 @@ export function ServerUpdate() {
 	if (!data) return null;
 
 	const { repo, refs, job, demo } = data;
-	const active = job.state === "starting" || job.state === "running";
 	const refsAvailable = refs.tags.length > 0 || refs.branches.length > 0;
+	const elapsed = active ? formatElapsed(job.startedAt, now) : null;
 
 	return (
 		<div className="space-y-6">
@@ -247,14 +269,24 @@ export function ServerUpdate() {
 					role="status"
 					data-testid="update-active-status"
 				>
-					<Loader2 className="size-4 animate-spin" aria-hidden="true" />
-					<span>
-						Updating
-						{job.ref
-							? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
-							: ""}
-						{job.message ? ` — ${job.message}` : ""}
-					</span>
+					<Loader2
+						className="size-4 shrink-0 animate-spin"
+						aria-hidden="true"
+					/>
+					<div className="min-w-0">
+						<span>
+							Updating
+							{job.ref
+								? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
+								: ""}
+							{elapsed ? ` · ${elapsed}` : ""}
+						</span>
+						{job.message && (
+							<p className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
+								{job.message}
+							</p>
+						)}
+					</div>
 				</div>
 			)}
 		</div>
