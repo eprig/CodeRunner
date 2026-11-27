@@ -160,9 +160,12 @@ If this deployment was started from a git checkout with `docker compose`, an
 admin can open **Admin → Update**, choose a published release tag or a branch
 from the repository shown on the page, and confirm. Tags pull the prebuilt
 images; branches fetch, check out, and build from the host checkout. The page
-shows the running commit, the host checkout path, and, while an update runs, a
-spinner with the elapsed time and the current Docker build step (or its
-completed-step duration) from the helper. If no checkout is detected, set
+shows the running commit, the selected ref's commit, the host checkout path,
+and, while an update runs, a spinner with the target commit, elapsed time, and
+current Docker build step (or its completed-step duration). A collapsible command
+log keeps the output of every helper command. Compose recreates the existing `control` and `workspace-template`
+containers, then the two replaced image tags are removed; student workspace
+containers roll lazily when they next reconnect. If no checkout is detected, set
 `CODERUNNER_UPDATE_REPO_DIR` in `.env`
 to the directory containing `docker-compose.yml`, then recreate the control
 container.

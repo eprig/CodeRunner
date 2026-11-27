@@ -45,16 +45,22 @@ control container.
    in the bind-mounted data dir so the *replacement* control process can report
    the result after the restart.
 3. The helper fetches origin, checks out the branch (`git checkout --force -B
-   <ref> origin/<ref>`), pulls or builds both images, updates
-   `CODERUNNER_TAG`/`CODERUNNER_IMAGE_NS` in the host `.env`, removes managed
-   workspace containers and clears their leases, then runs plain
-   `docker compose up -d` from the host checkout. Compose recreates the control
-   container from the same compose files an operator uses, so there is no
-   parallel hand-built container definition to keep in sync.
-4. The new control process pins the new workspace image ID. Separate from this
-   update, stale workspace containers are recycled lazily on adoption (decision
-   046); the explicit `rebuild-workspaces` step here makes the roll immediate
-   as requested.
+   <ref> origin/<ref>`), resolves the selected ref to a commit, pulls or builds
+   both images, updates `CODERUNNER_TAG`/`CODERUNNER_IMAGE_NS` in the host
+   `.env`, then runs plain `docker compose up -d` from the host checkout.
+   Compose recreates the existing Compose services (`control` and
+   `workspace-template`) from the same compose files an operator uses, so there
+   is no parallel hand-built container definition to keep in sync. It removes
+   only the two image tags this deployment replaced and runs `docker image
+   prune -f` to drop their now-untagged layers; other tagged images are left
+   alone. The helper itself still runs from the old control image, so that one
+   tag may be reported as in use and cleaned by a later prune after the helper
+   exits.
+4. Student workspace containers are not Compose services; the control plane
+   creates them. They roll lazily on next adoption when the new control process
+   pins the new workspace image ID (decision 046). The updater deliberately no
+   longer runs `rebuild-workspaces`, so existing containers are not removed and
+   replaced with new ones mid-update.
 
 ## Security and limits
 
@@ -83,7 +89,10 @@ control container.
   spinner with the current step message; idle, succeeded, and failed jobs show
   no history panel. For branch builds the helper mirrors Docker's step headers
   and `DONE <duration>` lines from BuildKit/classic output into the job file,
-  throttled to one write per second; the page adds a live elapsed timer.
+  throttled to one write per second; the page adds a live elapsed timer. The
+  active line includes the resolved commit, and a collapsible command log shows
+  every helper command with its output (capped at 300 lines) even after the job
+  finishes.
 - Branch builds use the helper's *starting* image's `coderunner` CLI, so a
   single update cannot depend on code from the branch being deployed. The next
   update runs from the newly built image.

@@ -25,8 +25,30 @@ const ok = (stdout = ""): DockerCommandResult => ({
 
 function githubFetch(url: string): Promise<Response> {
 	const body = url.includes("/tags?")
-		? [{ name: "v2.5.0" }, { name: "v2.4.0" }]
-		: [{ name: "main" }, { name: "dev" }, { name: "feature/my-branch" }];
+		? [
+				{
+					name: "v2.5.0",
+					commit: { sha: "tagcommit0000000000000000000000000000001" },
+				},
+				{
+					name: "v2.4.0",
+					commit: { sha: "tagcommit0000000000000000000000000000002" },
+				},
+			]
+		: [
+				{
+					name: "main",
+					commit: { sha: "branchcommit00000000000000000000000000001" },
+				},
+				{
+					name: "dev",
+					commit: { sha: "branchcommit00000000000000000000000000002" },
+				},
+				{
+					name: "feature/my-branch",
+					commit: { sha: "branchcommit00000000000000000000000000003" },
+				},
+			];
 	return Promise.resolve(Response.json(body));
 }
 
@@ -171,6 +193,13 @@ describe("server update helpers", () => {
 		expect(result).toEqual({
 			tags: ["v2.5.0", "v2.4.0"],
 			branches: ["main", "dev", "feature/my-branch"],
+			commits: {
+				"tag:v2.5.0": "tagcommit0000000000000000000000000000001",
+				"tag:v2.4.0": "tagcommit0000000000000000000000000000002",
+				"branch:main": "branchcommit00000000000000000000000000001",
+				"branch:dev": "branchcommit00000000000000000000000000002",
+				"branch:feature/my-branch": "branchcommit00000000000000000000000000003",
+			},
 			error: null,
 		});
 	});
@@ -214,7 +243,7 @@ describe("server update status", () => {
 			expect(status.job.steps.map((step) => step.label)).toEqual([
 				"Prepare checkout",
 				"Build or pull images",
-				"Restart services",
+				"Recreate Compose services",
 			]);
 			expect(status.restartExpected).toBe(false);
 		} finally {
@@ -383,18 +412,35 @@ describe("startServerUpdate", () => {
 			expect(run?.some((arg) => arg === "CODERUNNER_UPDATE_REF=v2.5.0")).toBe(
 				true,
 			);
+			expect(
+				run?.some(
+					(arg) =>
+						arg ===
+						"CODERUNNER_UPDATE_COMMIT=tagcommit0000000000000000000000000000001",
+				),
+			).toBe(true);
 			expect(run?.at(-3)).toBe("coderunner");
 			expect(run?.at(-2)).toBe("ghcr.io/eprig/coderunner-control:v2.4.0");
 			expect(run?.at(-1)).toBe("update-server");
 
 			const job = JSON.parse(
 				await readFile(join(root, "data", UPDATE_JOB_FILE), "utf8"),
-			) as { state: string; kind: string; ref: string };
+			) as {
+				state: string;
+				kind: string;
+				ref: string;
+				commit: string;
+				log: Array<{ kind: string; text: string }>;
+			};
 			expect(job).toMatchObject({
 				state: "starting",
 				kind: "tag",
 				ref: "v2.5.0",
+				commit: "tagcommit0000000000000000000000000000001",
 			});
+			expect(job.log.some((entry) => entry.text.includes("Resolved tag"))).toBe(
+				true,
+			);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

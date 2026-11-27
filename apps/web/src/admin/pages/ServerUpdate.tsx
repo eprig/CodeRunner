@@ -43,6 +43,10 @@ function formatElapsed(startedAt: string | null, now: number): string | null {
 	return `${rest}s`;
 }
 
+function logTime(at: string): string {
+	return /^\d{4}-/u.test(at) ? at.slice(11, 19) : at;
+}
+
 export function ServerUpdate() {
 	const { data, loading, error, refetch } = useAdminPoll(fetchStatus, 3000);
 	const [kind, setKind] = useState<ServerUpdateKind>("tag");
@@ -108,6 +112,7 @@ export function ServerUpdate() {
 
 	const { repo, refs, job, demo } = data;
 	const refsAvailable = refs.tags.length > 0 || refs.branches.length > 0;
+	const selectedCommit = refs.commits?.[`${kind}:${ref}`] ?? null;
 	const elapsed = active ? formatElapsed(job.startedAt, now) : null;
 
 	return (
@@ -251,10 +256,19 @@ export function ServerUpdate() {
 					<p className="text-xs text-muted-foreground">
 						Tags pull the prebuilt images from{" "}
 						{repo.imageNamespace ?? "the registry"}. Branches fetch, check out,
-						and build from the host checkout. The control plane restarts and
-						workspace containers are recreated with the new workspace image;
-						project files stay on disk.
+						and build from the host checkout. Compose recreates the control and
+						workspace-template containers; student workspaces roll when they
+						next reconnect. Project files stay on disk.
 					</p>
+					{selectedCommit && (
+						<p
+							className="text-xs text-muted-foreground"
+							data-testid="update-selected-commit"
+						>
+							Selected commit:{" "}
+							<code className="font-mono">{selectedCommit}</code>
+						</p>
+					)}
 					{actionError && (
 						<p className="text-sm text-destructive" role="alert">
 							{actionError}
@@ -279,6 +293,7 @@ export function ServerUpdate() {
 							{job.ref
 								? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
 								: ""}
+							{job.commit ? ` · ${job.commit.slice(0, 12)}` : ""}
 							{elapsed ? ` · ${elapsed}` : ""}
 						</span>
 						{job.message && (
@@ -288,6 +303,33 @@ export function ServerUpdate() {
 						)}
 					</div>
 				</div>
+			)}
+
+			{job.log.length > 0 && (
+				<details open={active} data-testid="update-command-log">
+					<summary className="cursor-pointer text-sm font-medium">
+						Command log ({job.log.length})
+					</summary>
+					<div className="mt-2 max-h-72 space-y-0.5 overflow-auto rounded border border-zinc-800 bg-black/30 p-3 font-mono text-xs">
+						{job.log.map((entry) => (
+							<div
+								key={`${entry.at}-${entry.kind}-${entry.text}`}
+								className={
+									entry.kind === "command"
+										? "text-sky-300"
+										: entry.kind === "error"
+											? "text-red-300"
+											: "text-foreground"
+								}
+							>
+								<span className="mr-2 text-muted-foreground">
+									{logTime(entry.at)}
+								</span>
+								{entry.text}
+							</div>
+						))}
+					</div>
+				</details>
 			)}
 		</div>
 	);

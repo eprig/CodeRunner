@@ -21,6 +21,10 @@ const status = {
 	refs: {
 		tags: ["v2.5.0", "v2.4.0"],
 		branches: ["main", "dev"],
+		commits: {
+			"tag:v2.5.0": "tagcommit0000000000000000000000000000001",
+			"branch:dev": "branchcommit00000000000000000000000000001",
+		},
 		error: null,
 	},
 	job: {
@@ -28,10 +32,12 @@ const status = {
 		state: "idle" as const,
 		kind: null,
 		ref: null,
+		commit: null,
 		startedAt: null,
 		finishedAt: null,
 		message: null,
 		steps: [],
+		log: [],
 	},
 	restartExpected: false,
 };
@@ -72,11 +78,22 @@ describe("ServerUpdate", () => {
 		).toHaveTextContent("ghcr.io/eprig");
 		expect(screen.queryByText("Image")).toBeNull();
 		expect(screen.queryByTestId("update-active-status")).toBeNull();
+		await waitFor(() =>
+			expect(
+				(screen.getByTestId("update-tag-select") as HTMLSelectElement).value,
+			).toBe("v2.5.0"),
+		);
+		expect(screen.getByTestId("update-selected-commit")).toHaveTextContent(
+			"tagcommit0000000000000000000000000000001",
+		);
 
 		const branch = screen.getByTestId(
 			"update-branch-select",
 		) as HTMLSelectElement;
 		await user.selectOptions(branch, "dev");
+		expect(screen.getByTestId("update-selected-commit")).toHaveTextContent(
+			"branchcommit00000000000000000000000000001",
+		);
 		await user.click(screen.getByTestId("update-submit"));
 
 		await waitFor(() => {
@@ -139,7 +156,12 @@ describe("ServerUpdate", () => {
 								hostDir: "/demo/coderunner",
 								updatable: false,
 							},
-							refs: { tags: ["v2.5.0"], branches: ["main"], error: null },
+							refs: {
+								tags: ["v2.5.0"],
+								branches: ["main"],
+								commits: {},
+								error: null,
+							},
 						}),
 				}),
 			),
@@ -201,11 +223,24 @@ describe("ServerUpdate", () => {
 								state: "running",
 								kind: "tag" as const,
 								ref: "v2.5.0",
+								commit: "abc123def4567890",
 								startedAt: new Date(Date.now() - 65_000).toISOString(),
 								message: "#9 [stage-1 6/9] RUN bun install 34.8s",
 								steps: [
 									{ label: "Prepare checkout", state: "done" },
 									{ label: "Build or pull images", state: "running" },
+								],
+								log: [
+									{
+										at: "2026-11-27T04:00:00.000Z",
+										kind: "command" as const,
+										text: "$ git fetch --prune --tags origin",
+									},
+									{
+										at: "2026-11-27T04:00:01.000Z",
+										kind: "output" as const,
+										text: "#9 [stage-1 6/9] RUN bun install 34.8s",
+									},
 								],
 							},
 						}),
@@ -217,11 +252,16 @@ describe("ServerUpdate", () => {
 
 		const active = await screen.findByTestId("update-active-status");
 		expect(active).toHaveTextContent("Updating to release v2.5.0");
+		expect(active).toHaveTextContent("abc123def456");
 		expect(active).toHaveTextContent(/1m/u);
 		expect(active).toHaveTextContent("#9 [stage-1 6/9] RUN bun install 34.8s");
 		expect(active.querySelector("svg")).toHaveClass("animate-spin");
 		expect(screen.queryByText("Last update")).toBeNull();
 		expect(screen.queryByTestId("update-steps")).toBeNull();
 		expect(screen.getByTestId("update-submit")).toBeDisabled();
+
+		const log = screen.getByTestId("update-command-log");
+		expect(log).toHaveTextContent("$ git fetch --prune --tags origin");
+		expect(log).toHaveTextContent("#9 [stage-1 6/9] RUN bun install 34.8s");
 	});
 });

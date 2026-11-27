@@ -5,6 +5,7 @@ import type {
 	ServerUpdateAccepted,
 	ServerUpdateJobState,
 	ServerUpdateKind,
+	ServerUpdateLogEntry,
 	ServerUpdateRequest,
 	ServerUpdateStatusResponse,
 	ServerUpdateStep,
@@ -35,11 +36,13 @@ type JobFile = {
 	id: string | null;
 	kind: ServerUpdateKind | null;
 	ref: string | null;
+	commit: string | null;
 	state: ServerUpdateJobState;
 	startedAt: string | null;
 	finishedAt: string | null;
 	message: string | null;
 	steps: ServerUpdateStep[];
+	log: ServerUpdateLogEntry[];
 	image: string | null;
 };
 
@@ -53,7 +56,13 @@ type ImageInfo = {
 	fromLocalCheckout: boolean;
 };
 
-type RefsResult = { tags: string[]; branches: string[]; error: string | null };
+type RefsResult = {
+	tags: string[];
+	branches: string[];
+	/** Keyed by `tag:<name>` / `branch:<name>` so the updater can report a commit. */
+	commits: Record<string, string>;
+	error: string | null;
+};
 
 type RefsCache = { at: number; result: RefsResult };
 let refsCache: RefsCache | null = null;
@@ -65,8 +74,8 @@ const STEPS: Array<{ label: string; detail: string }> = [
 		detail: "Control plane and workspace images",
 	},
 	{
-		label: "Restart services",
-		detail: "Recreate workspaces, then docker compose up -d",
+		label: "Recreate Compose services",
+		detail: "docker compose up -d, then prune replaced images",
 	},
 ];
 
@@ -74,11 +83,13 @@ const EMPTY_JOB: JobFile = {
 	id: null,
 	kind: null,
 	ref: null,
+	commit: null,
 	state: "idle",
 	startedAt: null,
 	finishedAt: null,
 	message: null,
 	steps: [],
+	log: [],
 	image: null,
 };
 
@@ -102,6 +113,10 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 	refs: {
 		tags: ["v2.5.0", "v2.4.0", "v2.3.0"],
 		branches: ["main", "dev"],
+		commits: {
+			"tag:v2.5.0": "demo0000000000000000000000000000000000000",
+			"branch:dev": "demo0000000000000000000000000000000000000",
+		},
 		error: null,
 	},
 	job: {
@@ -109,10 +124,18 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 		state: "idle",
 		kind: null,
 		ref: null,
+		commit: "demo0000000000000000000000000000000000000",
 		startedAt: null,
 		finishedAt: null,
 		message: null,
 		steps: initialSteps(),
+		log: [
+			{
+				at: "2026-11-27T00:00:00.000Z",
+				kind: "command",
+				text: "$ git fetch --prune --tags origin",
+			},
+		],
 	},
 	restartExpected: false,
 };
@@ -135,6 +158,7 @@ async function readJob(config: ControlConfig): Promise<JobFile> {
 			kind:
 				parsed.kind === "tag" || parsed.kind === "branch" ? parsed.kind : null,
 			ref: typeof parsed.ref === "string" ? parsed.ref : null,
+			commit: typeof parsed.commit === "string" ? parsed.commit : null,
 			state:
 				parsed.state === "starting" ||
 				parsed.state === "running" ||
@@ -147,6 +171,7 @@ async function readJob(config: ControlConfig): Promise<JobFile> {
 				typeof parsed.finishedAt === "string" ? parsed.finishedAt : null,
 			message: typeof parsed.message === "string" ? parsed.message : null,
 			steps: Array.isArray(parsed.steps) ? normalizeSteps(parsed.steps) : [],
+			log: Array.isArray(parsed.log) ? normalizeLog(parsed.log) : [],
 			image: typeof parsed.image === "string" ? parsed.image : null,
 		};
 	} catch {
@@ -173,6 +198,26 @@ function normalizeSteps(steps: unknown[]): ServerUpdateStep[] {
 				detail: typeof candidate.detail === "string" ? candidate.detail : null,
 			},
 		];
+	});
+}
+
+function normalizeLog(entries: unknown[]): ServerUpdateLogEntry[] {
+	return entries.flatMap((entry) => {
+		if (!entry || typeof entry !== "object") return [];
+		const candidate = entry as Partial<ServerUpdateLogEntry>;
+		if (
+			typeof candidate.text !== "string" ||
+			typeof candidate.at !== "string"
+		) {
+			return [];
+		}
+		const kind =
+			candidate.kind === "command" ||
+			candidate.kind === "error" ||
+			candidate.kind === "output"
+				? candidate.kind
+				: "output";
+		return [{ at: candidate.at, kind, text: candidate.text }];
 	});
 }
 
@@ -298,6 +343,7 @@ export async function listRemoteRefs(
 		return {
 			tags: [],
 			branches: [],
+			commits: {},
 			error: url
 				? "Available refs are listed for GitHub repository URLs only."
 				: null,
@@ -329,10 +375,24 @@ export async function listRemoteRefs(
 				`GitHub returned ${tagsResponse.status}/${branchesResponse.status}`,
 			);
 		}
-		const tags = (await tagsResponse.json()) as Array<{ name?: string }>;
+		const tags = (await tagsResponse.json()) as Array<{
+			name?: string;
+			commit?: { sha?: string };
+		}>;
 		const branches = (await branchesResponse.json()) as Array<{
 			name?: string;
+			commit?: { sha?: string };
 		}>;
+		const commits: Record<string, string> = {};
+		for (const tag of tags) {
+			if (tag.name && tag.commit?.sha)
+				commits[`tag:${tag.name}`] = tag.commit.sha;
+		}
+		for (const branch of branches) {
+			if (branch.name && branch.commit?.sha) {
+				commits[`branch:${branch.name}`] = branch.commit.sha;
+			}
+		}
 		const result: RefsResult = {
 			tags: tags
 				.map((tag) => tag.name ?? "")
@@ -342,6 +402,7 @@ export async function listRemoteRefs(
 				.map((branch) => branch.name ?? "")
 				.filter(Boolean)
 				.slice(0, MAX_REFS),
+			commits,
 			error: null,
 		};
 		refsCache = { at: now, result };
@@ -351,6 +412,7 @@ export async function listRemoteRefs(
 		return {
 			tags: [],
 			branches: [],
+			commits: {},
 			error: `Couldn't list refs from GitHub: ${message}`,
 		};
 	}
@@ -403,10 +465,12 @@ export async function getServerUpdateStatus(
 			state: job.state,
 			kind: job.kind,
 			ref: job.ref,
+			commit: job.commit,
 			startedAt: job.startedAt,
 			finishedAt: job.finishedAt,
 			message: job.message,
 			steps: job.steps.length > 0 ? job.steps : initialSteps(),
+			log: job.log,
 		},
 		restartExpected: job.state === "starting" || job.state === "running",
 	};
@@ -500,15 +564,36 @@ export async function startServerUpdate(
 	const workspaceImage = `${ns}/coderunner-workspace:${tag}`;
 	const hostRepoDir = config.hostRepoDir;
 	const hostDataDir = config.hostDataDir ?? config.dataDir;
+	const commit = refs.commits[`${request.kind}:${request.ref}`] ?? null;
+	const shortCommit = commit ? commit.slice(0, 12) : null;
 	const job: JobFile = {
 		id: jobId,
 		kind: request.kind,
 		ref: request.ref,
+		commit,
 		state: "starting",
 		startedAt,
 		finishedAt: null,
-		message: "Starting update…",
+		message: shortCommit
+			? `Starting update to ${shortCommit}…`
+			: "Starting update…",
 		steps: initialSteps(),
+		log: [
+			{
+				at: startedAt,
+				kind: "command",
+				text: `$ coderunner update-server ${request.kind} ${request.ref}`,
+			},
+			...(commit
+				? [
+						{
+							at: startedAt,
+							kind: "output" as const,
+							text: `Resolved ${request.kind} ${request.ref} to ${commit}`,
+						},
+					]
+				: []),
+		],
 		image: controlImage,
 	};
 	await writeJob(config, job);
@@ -522,7 +607,7 @@ export async function startServerUpdate(
 		["CODERUNNER_UPDATE_WORKSPACE_IMAGE", workspaceImage],
 		["CODERUNNER_UPDATE_TAG", tag],
 		["CODERUNNER_IMAGE_NS", ns],
-		["FRC_DB_PATH", resolve(hostDataDir, "app.db")],
+		["CODERUNNER_UPDATE_COMMIT", commit ?? ""],
 	];
 	// `docker compose up -d` in the helper must see the same COMPOSE_FILE the
 	// operator's deployment uses (prod adds Caddy/Alloy via a second file).

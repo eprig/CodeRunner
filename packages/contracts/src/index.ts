@@ -830,6 +830,12 @@ export const serverUpdateRepoSchema = z.object({
 	updatable: z.boolean(),
 });
 
+export const serverUpdateLogEntrySchema = z.object({
+	at: z.string(),
+	kind: z.enum(["command", "output", "error"]),
+	text: z.string(),
+});
+
 export const serverUpdateStatusResponseSchema = z.object({
 	ok: z.literal(true),
 	/** Demo mode returns canned, read-only sample data. */
@@ -838,6 +844,8 @@ export const serverUpdateStatusResponseSchema = z.object({
 	refs: z.object({
 		tags: z.array(z.string()),
 		branches: z.array(z.string()),
+		/** Commit SHA for each `tag:<name>` / `branch:<name>` key. */
+		commits: z.record(z.string(), z.string()),
 		error: z.string().nullable(),
 	}),
 	job: z.object({
@@ -845,10 +853,14 @@ export const serverUpdateStatusResponseSchema = z.object({
 		state: serverUpdateJobStateSchema,
 		kind: serverUpdateKindSchema.nullable(),
 		ref: z.string().nullable(),
+		/** Commit the selected ref resolves to, when it could be determined. */
+		commit: z.string().nullable(),
 		startedAt: z.string().nullable(),
 		finishedAt: z.string().nullable(),
 		message: z.string().nullable(),
 		steps: z.array(serverUpdateStepSchema),
+		/** Tail of the helper's command/output log, oldest first. */
+		log: z.array(serverUpdateLogEntrySchema),
 	}),
 	/** True while the control container is expected to restart mid-update. */
 	restartExpected: z.boolean(),
@@ -867,6 +879,7 @@ export type ServerUpdateKind = z.infer<typeof serverUpdateKindSchema>;
 export type ServerUpdateRequest = z.infer<typeof serverUpdateRequestSchema>;
 export type ServerUpdateJobState = z.infer<typeof serverUpdateJobStateSchema>;
 export type ServerUpdateStep = z.infer<typeof serverUpdateStepSchema>;
+export type ServerUpdateLogEntry = z.infer<typeof serverUpdateLogEntrySchema>;
 export type ServerUpdateRepo = z.infer<typeof serverUpdateRepoSchema>;
 export type ServerUpdateStatusResponse = z.infer<
 	typeof serverUpdateStatusResponseSchema
