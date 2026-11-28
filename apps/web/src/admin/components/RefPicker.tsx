@@ -161,9 +161,6 @@ export function RefPicker({
 					<>
 						<Icon className="size-4 shrink-0 text-muted-foreground" />
 						<span className="truncate font-medium">{value.ref}</span>
-						<span className="text-xs text-muted-foreground">
-							{value.kind === "tag" ? "release" : "branch"}
-						</span>
 						{(selected?.current ?? keyOf(value) === currentKey) && (
 							<RefBadge tone="current">Current</RefBadge>
 						)}

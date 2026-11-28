@@ -29,6 +29,8 @@ export type ManagedContainerStats = {
 export type LocalDockerRuntimeProviderOptions = ContainerOrchestratorOptions;
 
 export type DockerInspectContainer = {
+	/** ID of the image the container was created from. */
+	Image?: string;
 	Name?: string;
 	State?: {
 		Running?: boolean;

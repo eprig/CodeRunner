@@ -42,14 +42,6 @@ function githubFetch(url: string): Promise<Response> {
 			}),
 		);
 	}
-	if (url.includes("/contents/docker-compose.yml")) {
-		return Promise.resolve(
-			new Response(
-				// biome-ignore lint/suspicious/noTemplateCurlyInString: compose-file interpolation, not a JS template.
-				"services:\n  control:\n    image: ns/coderunner-control:${CODERUNNER_TAG:-v2.5.0}\n",
-			),
-		);
-	}
 	if (url.includes("/releases/tags/")) {
 		return url.endsWith("/v2.5.0")
 			? Promise.resolve(
@@ -162,6 +154,7 @@ async function deps(
 				JSON.stringify([
 					{
 						Name: "/coderunner-control",
+						Image: "sha256:runningcontrolimage",
 						Config: {
 							Image: options.image ?? "ghcr.io/eprig/coderunner-control:v2.4.0",
 							Labels: options.labels ?? imageLabels,
@@ -646,7 +639,7 @@ describe("updater safety", () => {
 		]);
 	});
 
-	test("starts the helper with the SELinux exemption and the images it replaces", async () => {
+	test("starts the helper with the SELinux exemption and the image it replaces", async () => {
 		clearRefsCache();
 		const { context, root, calls } = await deps();
 		try {
@@ -654,13 +647,8 @@ describe("updater safety", () => {
 			const run = calls.find((call) => call[0] === "run");
 			expect(run?.join(" ")).toContain("--security-opt label=disable");
 			expect(run).toContain(
-				"CODERUNNER_UPDATE_PREVIOUS_IMAGE=ghcr.io/eprig/coderunner-control:v2.4.0",
+				"CODERUNNER_UPDATE_PREVIOUS_IMAGE_ID=sha256:runningcontrolimage",
 			);
-			expect(
-				run?.some((arg) =>
-					arg.startsWith("CODERUNNER_UPDATE_PREVIOUS_WORKSPACE_IMAGE="),
-				),
-			).toBe(true);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -839,22 +827,6 @@ describe("update details for the admin page", () => {
 			);
 			const status = await getServerUpdateStatus(context);
 			expect(status.job.requestedBy).toBe("admin@example.com");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	test("reports which release a branch's compose file pins", async () => {
-		clearRefsCache();
-		const { context, root } = await deps();
-		try {
-			const branch = await getRefDetails(context, {
-				kind: "branch",
-				ref: "dev",
-			});
-			expect(branch.pinnedTag).toBe("v2.5.0");
-			const tag = await getRefDetails(context, { kind: "tag", ref: "v2.5.0" });
-			expect(tag.pinnedTag).toBeNull();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

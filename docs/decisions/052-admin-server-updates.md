@@ -1,4 +1,4 @@
-# 052 — Admin UI server updates, versioned by the git checkout
+# 052 — Admin UI server updates; `:latest` is what the server runs
 
 ## Decision
 
@@ -9,28 +9,22 @@ branch and builds both images on the server. Compose then recreates the
 control container, and student workspaces roll to the new image as they
 reconnect (decision 046).
 
-**The deployed version is the git checkout, not `.env`.** Each release commit
-pins its own image tag as the `${CODERUNNER_TAG:-…}` default in
-`docker-compose.yml` (`bun run release:prepare vX.Y.Z`), and `release.yml`
-refuses a tag whose compose file pins anything else. So the manual update is
-plain git plus Compose, with no file to edit:
+**`:latest` means "what this server runs", and `docker compose up -d` deploys
+the local images.** The compose files keep their `${CODERUNNER_TAG:-latest}`
+default. The updater pulls a release as `…:v2.5.0` (or builds a branch as
+`…:branch-dev`), then re-tags those images as `…:latest` and runs
+`docker compose up -d`, which recreates any container whose image changed. A
+later hand-run `docker compose up -d` therefore redeploys exactly what is
+running, and building a branch by hand (`bun run docker:build:*`, which tags
+`:latest`) followed by `up -d` deploys it. `docker compose pull` keeps its
+usual meaning: fetch the newest published release into `:latest`.
 
-```bash
-git fetch --tags && git checkout v2.6.0
-docker compose pull && docker compose up -d
-```
-
-The UI does exactly this, so the browser and terminal paths cannot drift.
-
-**Legacy mode.** `CODERUNNER_TAG` in `.env` still overrides the checkout. That
+**Legacy mode.** `CODERUNNER_TAG` in `.env` still overrides `latest`. That
 covers deployments that followed the old docs, and the GCE VM, whose
 `render-env.sh` and Deploy workflow write the line. The updater never *adds*
-version lines to `.env`. When the line already exists, it rewrites that one
-line in place, so the operator's own `docker compose up -d` (or a GCE reboot)
-stays on the deployed version. The tab labels such deployments "Legacy setup"
-and explains how to switch. Release tags from before pinning pin `latest`; the
-updater still deploys them correctly by exporting `CODERUNNER_TAG` for its own
-Compose calls, and its log notes that a later plain `up -d` would run `latest`.
+version lines to `.env`. When the line exists, it rewrites that one line in
+place and does not re-tag, so Compose runs the versioned tag directly. The tab
+labels such deployments "Legacy setup".
 
 The only `.env` settings the feature reads are both optional:
 `CODERUNNER_UPDATE_REPO_DIR` (only when Compose's project dir is not the
@@ -48,15 +42,15 @@ mounts the host repo (from the control container's
 helper outlives the control container it replaces, which is what lets it watch
 the new one start and roll back.
 
-Versioning by checkout was chosen over two alternatives:
+A local `:latest` was chosen over two alternatives:
 
-- **A wrapper script that derives the tag from `git describe`.** No release
-  process change, but a plain `docker compose up -d` would fall back to
-  `latest`, and the script becomes a second entry point to keep in sync.
-- **Version stored in the data dir by the control plane.** Makes the UI the
-  only safe update path; git commands would no longer describe what runs.
-
-The cost is a release-prep commit per release, enforced by CI.
+- **Pinning each release's tag as the compose default** (a release-prep commit
+  per release, checked by CI). Tried and dropped: on a branch checkout the
+  compose file still names the last release, so a hand-run
+  `docker compose up -d` silently switched a branch build back to that
+  release. Operators expect `up -d` to run what is on the machine.
+- **Writing the tag to `.env` on every update.** Works, but makes `.env` (an
+  operator-owned secrets file) carry deployment state.
 
 ## Flow
 
@@ -85,26 +79,30 @@ The cost is a release-prep commit per release, enforced by CI.
      branch with `git checkout --force -B <ref> origin/<ref>` plus `git
      submodule update --init --recursive`, since the control build compiles
      the pinned `vendor/AdvantageScope`;
-   - asks Compose which images the checked-out stack runs (`docker compose
-     config` with `CODERUNNER_TAG=<tag>`);
-   - for a tag, runs `docker compose pull`; for a branch, runs `bun run
-     docker:build:*` with those exact image names (tag `branch-<slug>`);
-   - updates a legacy `.env` pin if one exists, runs `docker compose up -d`,
-     and waits up to 4 minutes for the control container's healthcheck.
+   - asks Compose which images the stack runs (`docker compose config`,
+     normally `…:latest`) and records their image IDs, using the running
+     control container's own image ID (passed by the control plane) for the
+     control image;
+   - for a tag, `docker pull`s `…:<tag>` for both images; for a branch, runs
+     `bun run docker:build:*` as `…:branch-<slug>`;
+   - re-tags those images as the names Compose runs (or, in legacy mode,
+     rewrites the `.env` line), runs `docker compose up -d`, and waits up to
+     4 minutes for the control container's healthcheck.
 
    Compose calls use the control container's own
    `com.docker.compose.project`, `.project.config_files`, and `.service`
    labels, so they target the stack the operator started, `-f` flags
    included.
 5. Failures:
-   - **Before Compose ran** (fetch, pull, or build): only the checkout and
-     `.env` are restored, and the job says "The server was not changed".
-   - **The new control container is unhealthy:** the helper restores both and
-     runs `docker compose up -d` with the previous tag.
+   - **Before Compose ran** (fetch, pull, or build): only the checkout is
+     restored, and the job says "The server was not changed".
+   - **The new control container is unhealthy:** the helper re-tags the
+     previous image IDs (or restores `.env`), restores the checkout, and runs
+     `docker compose up -d` again.
 
-   Only after a healthy start does it remove the two image tags it replaced
-   (the running control image and `CODE_IMAGE`, passed in by the control
-   plane) and run `docker image prune -f`. Other tagged images are left alone.
+   Only after a healthy start does it remove the replaced images' versioned
+   tags (e.g. `…:v2.4.0`; never a `:latest`) and run `docker image prune -f`.
+   Other tagged images are left alone.
 6. Student workspace containers are not Compose services. They roll lazily
    when the new control process pins the new workspace image ID (decision
    046); the updater does not run `rebuild-workspaces`.
@@ -126,10 +124,7 @@ The cost is a release-prep commit per release, enforced by CI.
   GCE VM (compose files copied, not cloned), keeps its own update tooling.
   Demo mode shows canned, read-only data.
 - Branch builds use the helper's *starting* image's updater, so one update
-  cannot depend on code from the branch being deployed. A branch checkout's
-  compose file still pins the last release. The helper exports the branch tag
-  for its own Compose calls, but a later manual `docker compose up -d` returns
-  to that release, and the page says so.
+  cannot depend on code from the branch being deployed.
 - The helper runs as root, so files it checks out may be root-owned on the
   host.
 - The control image ships git, a pinned Compose plugin, and the buildx plugin

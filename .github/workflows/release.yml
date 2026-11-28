@@ -73,16 +73,6 @@ jobs:
             PRERELEASE=true
           fi
 
-          # The tagged commit must pin its own version as the compose default
-          # (bun run release:prepare), so checking out the tag deploys it.
-          # See docs/decisions/052-admin-server-updates.md.
-          defaults="$(git show "$TAG_SHA:docker-compose.yml" | grep -oE '\$\{CODERUNNER_TAG:-[^}]*\}' | sort -u)"
-          if [[ "$defaults" != "\${CODERUNNER_TAG:-$TAG}" ]]; then
-            echo "docker-compose.yml at $TAG pins: ${defaults:-nothing}"
-            echo "Run 'bun run release:prepare $TAG', commit, and move the tag to that commit."
-            exit 1
-          fi
-
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"

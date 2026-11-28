@@ -206,8 +206,10 @@ time it reconnects, so schedule updates when no class is active. If the new
 control container fails its healthcheck, the previous version is restored
 automatically and the tab shows why.
 
-Outside the browser, update with git from the checkout: `git fetch --tags &&
-git checkout <tag> && docker compose pull && docker compose up -d`; see
+Compose runs the local `:latest` images, which the Update tab points at what it
+deployed, so `docker compose up -d` redeploys the running version. To update
+by hand, `docker compose pull && docker compose up -d` installs the newest
+release; see
 [Local Deployment](../deploying/local.md#updating-coderunner-to-a-new-release).
 Update requests are recorded in the audit log as `server.update`.
 

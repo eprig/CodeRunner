@@ -41,7 +41,6 @@ describe("release workflow", () => {
     rev-parse) echo test-sha ;;
     fetch) echo fetched-main ;;
     merge-base) return "$ANCESTOR_STATUS" ;;
-    show) printf 'image: x:\${CODERUNNER_TAG:-%s}\nCODE_IMAGE: y:\${CODERUNNER_TAG:-%s}\n' "\${PINNED:-$TAG}" "\${PINNED:-$TAG}" ;;
     *) return 99 ;;
   esac
 }`;
@@ -70,26 +69,6 @@ describe("release workflow", () => {
 					`tag=${tag}\ntag_sha=test-sha\nprerelease=${prerelease}\n`,
 				);
 			}
-		} finally {
-			await rm(temp, { recursive: true, force: true });
-		}
-	});
-
-	test("refuses a tag whose docker-compose.yml pins another version", async () => {
-		const temp = await mkdtemp(join(tmpdir(), "coderunner-tag-test-"));
-		try {
-			const result = await run(
-				script("validate", "validate"),
-				{
-					TAG: "v0.6.1",
-					PINNED: "latest",
-					ANCESTOR_STATUS: "0",
-					GITHUB_OUTPUT: join(temp, "output"),
-				},
-				git,
-			);
-			expect(result.code).toBe(1);
-			expect(result.stdout).toContain("bun run release:prepare v0.6.1");
 		} finally {
 			await rm(temp, { recursive: true, force: true });
 		}

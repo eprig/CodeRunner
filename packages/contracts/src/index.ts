@@ -903,11 +903,6 @@ export const serverUpdateRefDetailsSchema = z.object({
 	kind: serverUpdateKindSchema,
 	ref: z.string(),
 	commit: serverUpdateCommitSchema.nullable(),
-	/**
-	 * For a branch: the release its docker-compose.yml pins as the default
-	 * image tag, i.e. what a plain `docker compose up -d` on that checkout runs.
-	 */
-	pinnedTag: z.string().nullable(),
 	release: z
 		.object({
 			name: z.string(),

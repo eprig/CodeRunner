@@ -75,7 +75,6 @@ function details(
 			date: "2026-11-25T00:00:00.000Z",
 			url: null,
 		},
-		pinnedTag: kind === "branch" ? "v2.5.0" : null,
 		release:
 			kind === "tag"
 				? {
@@ -169,9 +168,8 @@ describe("ServerUpdate", () => {
 		expect(screen.getByTestId("update-current-commit")).toHaveTextContent(
 			"abc123d",
 		);
-		expect(screen.getByTestId("update-activity")).toHaveTextContent(
-			"won't interrupt anyone",
-		);
+		// Nobody is active, so the card says nothing about interruptions.
+		expect(screen.queryByTestId("update-activity")).toBeNull();
 		// Registry internals are not end-user information.
 		expect(screen.queryByText(/ghcr\.io/u)).toBeNull();
 	});
@@ -195,7 +193,7 @@ describe("ServerUpdate", () => {
 			within(panel).getByTestId("update-selected-commit"),
 		).toHaveTextContent("Head of v2.5.0");
 		expect(screen.getByTestId("update-plan")).toHaveTextContent(
-			"pulls its prebuilt images",
+			"Pulls the prebuilt images",
 		);
 	});
 
@@ -230,7 +228,11 @@ describe("ServerUpdate", () => {
 		expect(screen.queryByRole("listbox")).toBeNull();
 		expect(screen.getByTestId("update-ref-picker")).toHaveTextContent("dev");
 		expect(screen.getByTestId("update-plan")).toHaveTextContent(
-			"builds both images on this server",
+			"Builds both images on this server",
+		);
+		// The icon marks it as a branch; no "branch" word next to the name.
+		expect(screen.getByTestId("update-ref-picker")).not.toHaveTextContent(
+			/\b(branch|release)\b/u,
 		);
 
 		await user.click(screen.getByTestId("update-submit"));
@@ -447,12 +449,14 @@ describe("ServerUpdate", () => {
 			}),
 		});
 		render(<ServerUpdate />);
-		expect(await screen.findByTestId("update-failed")).toHaveTextContent(
-			"Last update to branch dev failed: The new control container did not become healthy. Rolled back to v2.4.0.",
+		expect(await screen.findByTestId("update-last")).toHaveTextContent(
+			/Failed · dev by admin@example\.com, .* \(took 1m 32s\)/u,
 		);
-		expect(screen.getByTestId("update-last")).toHaveTextContent(
-			/Failed: dev by admin@example\.com, .* \(took 1m 32s\)/u,
+		expect(screen.getByTestId("update-failed")).toHaveTextContent(
+			"The new control container did not become healthy. Rolled back to v2.4.0.",
 		);
+		// Said once, inside the card; no second "Last update" banner.
+		expect(screen.getAllByText(/Last update/u)).toHaveLength(1);
 	});
 
 	describe("names a build tagged latest by its branch", () => {
@@ -569,33 +573,41 @@ describe("ServerUpdate", () => {
 		).toBe(true);
 	});
 
-	test("names the release a plain compose restart would switch a branch build to", async () => {
+	test("keeps the branch plan to one short line", async () => {
 		const user = userEvent.setup();
 		mockFetch();
 		render(<ServerUpdate />);
 		await user.click(await screen.findByTestId("update-ref-picker"));
 		await user.click(screen.getByRole("option", { name: /^dev/u }));
-		await waitFor(() =>
-			expect(screen.getByTestId("update-plan")).toHaveTextContent(
-				'running "docker compose up -d" yourself would switch the server to release v2.5.0',
-			),
+		expect(screen.getByTestId("update-plan")).toHaveTextContent(
+			"Builds both images on this server, which takes 10+ minutes.",
+		);
+		expect(screen.getByTestId("update-plan")).not.toHaveTextContent(
+			"docker compose",
 		);
 	});
 
-	test("skips that note when .env pins the version (legacy)", async () => {
-		const user = userEvent.setup();
+	test("says nothing about picking the version that's already running", async () => {
 		mockFetch({
-			status: () => ({
-				...status,
-				repo: { ...status.repo, versionPinnedInEnv: true },
-			}),
+			details: (kind, ref) =>
+				details(kind, ref, {
+					release: null,
+					compare: {
+						status: "identical",
+						aheadBy: 0,
+						behindBy: 0,
+						commits: [],
+						url: null,
+					},
+				}),
 		});
 		render(<ServerUpdate />);
-		await user.click(await screen.findByTestId("update-ref-picker"));
-		await user.click(screen.getByRole("option", { name: /^dev/u }));
-		await screen.findByTestId("update-ref-details");
-		expect(screen.getByTestId("update-plan")).not.toHaveTextContent(
-			"docker compose up -d",
+		await screen.findByTestId("update-plan");
+		await waitFor(() =>
+			expect(screen.queryByText(/Loading version details/u)).toBeNull(),
 		);
+		expect(screen.queryByTestId("update-compare")).toBeNull();
+		expect(screen.queryByText(/Same code/u)).toBeNull();
+		expect(screen.queryByTestId("update-ref-details")).toBeNull();
 	});
 });

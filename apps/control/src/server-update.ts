@@ -77,6 +77,7 @@ type ImageInfo = {
 	commit: string | null;
 	version: string | null;
 	branch: string | null;
+	imageId: string | null;
 	/** Container labels (OCI provenance from the image, plus Compose's own). */
 	labels: Record<string, string>;
 	/** Local git/.env metadata is for display only; only container metadata can drive an update. */
@@ -289,6 +290,7 @@ async function readImageInfo(deps: ServerUpdateDeps): Promise<ImageInfo> {
 			commit: labels["org.opencontainers.image.revision"] ?? null,
 			version: labels["org.opencontainers.image.version"] ?? null,
 			branch: labels[BRANCH_LABEL]?.trim() || null,
+			imageId: container.Image ?? null,
 			labels,
 			fromLocalCheckout: false,
 		};
@@ -304,6 +306,7 @@ async function readImageInfo(deps: ServerUpdateDeps): Promise<ImageInfo> {
 		commit: null,
 		version: null,
 		branch: null,
+		imageId: null,
 		labels: {},
 		fromLocalCheckout: false,
 	};
@@ -353,6 +356,7 @@ async function readLocalImageInfo(repo: string): Promise<ImageInfo> {
 		commit,
 		version: tag,
 		branch: branch && branch !== "HEAD" ? branch : null,
+		imageId: null,
 		labels: {},
 		fromLocalCheckout: true,
 	};
@@ -505,33 +509,6 @@ function toCommit(raw: GithubCommit): ServerUpdateCommit | null {
 		date: raw.commit?.committer?.date ?? raw.commit?.author?.date ?? null,
 		url: raw.html_url ?? null,
 	};
-}
-
-const COMPOSE_TAG_DEFAULT = /\$\{CODERUNNER_TAG:-([^}]*)\}/u;
-
-/** The image tag a commit's docker-compose.yml runs by default. */
-async function pinnedTagAt(
-	fetchImpl: FetchImpl,
-	slug: string,
-	sha: string,
-): Promise<string | null> {
-	const path = `/repos/${slug}/contents/docker-compose.yml?ref=${encodeURIComponent(sha)}`;
-	const hit = githubCache.get(path);
-	if (hit && Date.now() - hit.at < hit.ttl) return hit.value as string | null;
-	let value: string | null = null;
-	try {
-		const text = await (
-			await githubResponse(fetchImpl, path, {
-				accept: "application/vnd.github.raw+json",
-			})
-		).text();
-		value = COMPOSE_TAG_DEFAULT.exec(text)?.[1]?.trim() || null;
-	} catch (error) {
-		if (!(error instanceof GitHubError && error.status === 404)) return null;
-	}
-	// Keyed by commit, so the answer never changes.
-	githubCache.set(path, { at: Date.now(), ttl: 24 * 60 * 60_000, value });
-	return value;
 }
 
 async function commitInfo(
@@ -763,7 +740,6 @@ export async function getRefDetails(
 		kind,
 		ref,
 		commit: null,
-		pinnedTag: null,
 		release: null,
 		compare: null,
 		error: null,
@@ -795,7 +771,7 @@ export async function getRefDetails(
 	const refs = await listRemoteRefs(image.url, fetchImpl);
 	const target = refs.commits[`${kind}:${ref}`] ?? null;
 	try {
-		const [commit, release, compare, pinnedTag] = await Promise.all([
+		const [commit, release, compare] = await Promise.all([
 			target ? commitInfo(fetchImpl, slug, target) : Promise.resolve(null),
 			kind === "tag"
 				? cachedGithub<{
@@ -823,15 +799,11 @@ export async function getRefDetails(
 						DETAILS_CACHE_MS,
 					)
 				: Promise.resolve(null),
-			kind === "branch" && target
-				? pinnedTagAt(fetchImpl, slug, target)
-				: Promise.resolve(null),
 		]);
 		const status = compare?.status;
 		return {
 			...empty,
 			commit,
-			pinnedTag,
 			release: release
 				? {
 						name: release.name?.trim() || ref,
@@ -1094,14 +1066,15 @@ export async function startServerUpdate(
 		["CODERUNNER_UPDATE_REF", request.ref],
 		["CODERUNNER_UPDATE_KIND", request.kind],
 		["CODERUNNER_UPDATE_JOB_FILE", hostJobPath(config)],
-		// The image tag the checked-out compose files are run with. A release
-		// commit pins this same value as its compose default.
+		// Versioned tag to pull or build (`v2.5.0`, `branch-dev`); the helper
+		// then points the deployment's `:latest` at it.
 		["CODERUNNER_UPDATE_TAG", tag],
 		["CODERUNNER_UPDATE_COMMIT", commit ?? ""],
 		// What is running now, so the helper prunes exactly these afterwards and
 		// can tell a rollback what to return to.
-		["CODERUNNER_UPDATE_PREVIOUS_IMAGE", imageInfo.image],
-		["CODERUNNER_UPDATE_PREVIOUS_WORKSPACE_IMAGE", config.codeImage],
+		// The image this control container runs, by ID: `:latest` may already
+		// point elsewhere (a manual pull), and rollback re-tags this exact image.
+		["CODERUNNER_UPDATE_PREVIOUS_IMAGE_ID", imageInfo.imageId ?? ""],
 		...composeEnv(imageInfo.labels),
 	];
 	const updaterName = `${UPDATER_NAME_PREFIX}${jobId}`;

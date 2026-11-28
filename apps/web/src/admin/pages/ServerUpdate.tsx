@@ -266,14 +266,12 @@ function CommitLine({
 
 function compareSummary(
 	compare: NonNullable<ServerUpdateRefDetails["compare"]>,
-): { tone: "good" | "warn" | "neutral"; text: string } {
+): { tone: "good" | "warn"; text: string } | null {
 	const plural = (n: number) => `${n} commit${n === 1 ? "" : "s"}`;
 	switch (compare.status) {
 		case "identical":
-			return {
-				tone: "neutral",
-				text: "Same code as what's running now; updating redeploys it.",
-			};
+			// Nothing worth saying: the Current badge and "Redeploy" button cover it.
+			return null;
 		case "ahead":
 			return {
 				tone: "good",
@@ -330,6 +328,17 @@ function RefDetailsPanel({
 	const hiddenCommits = details.compare
 		? Math.max(0, details.compare.aheadBy - details.compare.commits.length)
 		: 0;
+	const hasCommits = (details.compare?.commits.length ?? 0) > 0;
+	// Don't draw an empty box (e.g. picking the version that's already running).
+	if (
+		!summary &&
+		!details.release &&
+		!hasCommits &&
+		!(details.commit && showDeploysCommit) &&
+		!problem
+	) {
+		return null;
+	}
 	return (
 		<div
 			className="space-y-3 rounded border border-zinc-800 bg-black/20 p-3"
@@ -340,9 +349,7 @@ function RefDetailsPanel({
 					className={
 						summary.tone === "good"
 							? "text-sm text-green-300"
-							: summary.tone === "warn"
-								? "text-sm text-yellow-300"
-								: "text-sm text-muted-foreground"
+							: "text-sm text-yellow-300"
 					}
 					data-testid="update-compare"
 				>
@@ -623,15 +630,6 @@ export function ServerUpdate() {
 					</div>
 				</Banner>
 			)}
-			{!active && job.state === "failed" && job.message && (
-				<Banner tone="error" role="alert" testId="update-failed">
-					Last update
-					{job.ref
-						? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
-						: ""}{" "}
-					failed: {job.message}
-				</Banner>
-			)}
 			{demo && (
 				<Banner tone="info">
 					Demo mode is showing sample values. The Update tab is read-only here;
@@ -712,7 +710,7 @@ export function ServerUpdate() {
 							</code>
 						</p>
 					)}
-					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+					<div className="grid grid-cols-1 gap-4 border-t border-zinc-800 pt-4 sm:grid-cols-2 lg:grid-cols-3">
 						<Detail label="Repository">
 							{repo.url ? (
 								<a
@@ -735,7 +733,9 @@ export function ServerUpdate() {
 						<Detail label="Last update">
 							{job.state === "succeeded" || job.state === "failed" ? (
 								<span data-testid="update-last">
-									{job.state === "failed" ? "Failed: " : ""}
+									{job.state === "failed" ? (
+										<span className="text-red-300">Failed · </span>
+									) : null}
 									{job.ref ?? "unknown"}
 									{job.requestedBy ? ` by ${job.requestedBy}` : ""}
 									{job.finishedAt ? ", " : ""}
@@ -749,15 +749,23 @@ export function ServerUpdate() {
 							)}
 						</Detail>
 					</div>
+					{!active && job.state === "failed" && job.message && (
+						<p
+							className="text-sm text-red-300"
+							role="alert"
+							data-testid="update-failed"
+						>
+							{job.message}
+						</p>
+					)}
 					{repo.versionPinnedInEnv && (
 						<p
 							className="text-xs text-muted-foreground"
 							data-testid="update-legacy"
 						>
 							Legacy setup: <code className="font-mono">.env</code> pins{" "}
-							<code className="font-mono">CODERUNNER_TAG</code>. Updates keep
-							that line current. To let the checked-out version decide instead,
-							delete the line (not on GCE VMs, where render-env writes it).
+							<code className="font-mono">CODERUNNER_TAG</code>, and updates
+							keep that line current.
 						</p>
 					)}
 				</CardContent>
@@ -826,13 +834,8 @@ export function ServerUpdate() {
 							data-testid="update-plan"
 						>
 							{choice.kind === "tag"
-								? `Checks out ${choice.ref} and pulls its prebuilt images. Usually a minute or two.`
-								: `Checks out ${choice.ref} and builds both images on this server. Expect 10+ minutes of heavy CPU use.`}
-							{choice.kind === "branch" &&
-								!repo.versionPinnedInEnv &&
-								details?.ref === choice.ref &&
-								details.pinnedTag &&
-								` Reboots keep this build running, but running "docker compose up -d" yourself would switch the server to ${details.pinnedTag === "latest" ? "the latest release" : `release ${details.pinnedTag}`}, which is what ${choice.ref}'s docker-compose.yml points to. Use this page to update or redeploy instead.`}
+								? "Pulls the prebuilt images, usually in a minute or two."
+								: "Builds both images on this server, which takes 10+ minutes."}
 						</p>
 					)}
 					<RefDetailsPanel
@@ -841,23 +844,14 @@ export function ServerUpdate() {
 						error={detailsError}
 						now={now}
 					/>
-					<p
-						className={
-							activity.activeWorkspaces > 0 || activity.activeBuilds > 0
-								? "text-sm text-yellow-300"
-								: "text-sm text-muted-foreground"
-						}
-						data-testid="update-activity"
-					>
-						{activity.activeWorkspaces > 0 || activity.activeBuilds > 0
-							? `${activity.activeWorkspaces} student${activity.activeWorkspaces === 1 ? " is" : "s are"} active and ${activity.activeBuilds} build${activity.activeBuilds === 1 ? " is" : "s are"} running. Updating disconnects their editors and stops running simulations.`
-							: "No students are active right now, so updating won't interrupt anyone."}
-					</p>
-					<p className="text-xs text-muted-foreground">
-						Project files stay on disk; each student's workspace moves to the
-						new version when they next reconnect. If the new version fails its
-						health check, the previous one is restored automatically.
-					</p>
+					{(activity.activeWorkspaces > 0 || activity.activeBuilds > 0) && (
+						<p
+							className="text-sm text-yellow-300"
+							data-testid="update-activity"
+						>
+							{`${activity.activeWorkspaces} student${activity.activeWorkspaces === 1 ? " is" : "s are"} active and ${activity.activeBuilds} build${activity.activeBuilds === 1 ? " is" : "s are"} running. Updating disconnects their editors and stops running simulations.`}
+						</p>
+					)}
 					{actionError && (
 						<p className="text-sm text-destructive" role="alert">
 							{actionError}

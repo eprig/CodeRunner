@@ -154,9 +154,10 @@ step below.
 
 :::
 
-The version your server runs is the git checkout it was started from:
-`docker-compose.yml` at a release tag pins that release's images, so nothing
-version-related needs to live in `.env`.
+Compose runs the local `:latest` images. Admin → Update points `:latest` at
+the release it pulls or the branch it builds, so a plain `docker compose up -d`
+always redeploys what the server is running; nothing version-related lives in
+`.env`.
 
 ### Option A: Admin → Update (recommended)
 
@@ -174,9 +175,10 @@ Open **Admin → Update**. The page shows:
 Choose a version and confirm. A release checks out its tag and pulls the
 prebuilt images; a branch checks out the branch and builds both images on the
 server (10+ minutes, CPU-heavy). Local edits in the checkout are discarded.
-Compose then recreates the `control` and `workspace-template` containers. If
-the new control container does not pass its healthcheck, the previous checkout
-and images are restored automatically. Student workspace containers move to the
+The new images are tagged `:latest`, and `docker compose up -d` recreates the
+`control` and `workspace-template` containers. If the new control container
+does not pass its healthcheck, the previous images are tagged `:latest` again
+and restarted automatically. Student workspace containers move to the
 new image when each student next reconnects; project files are kept.
 
 The page lists versions through the GitHub API. **Check for updates** refreshes
@@ -188,20 +190,35 @@ release that includes this page must be done with Option B, which installs an
 image that has the updater. See
 [decision 052](https://github.com/mathewdunne/CodeRunner/blob/main/docs/decisions/052-admin-server-updates.md).
 
-### Option B: git
+### Option B: by hand
 
-From the checkout, check out the release and restart on its images:
+**Newest release.** From the checkout:
 
 ```bash
-git fetch --tags
-git checkout v2.5.0
+git fetch --tags && git checkout "$(git describe --tags --abbrev=0 origin/main)"
 docker compose pull
 docker compose up -d
 ```
 
-`up -d` restarts the control plane on the new release. Each student's
-workspace container is recreated on the new workspace image the next time that
-student connects; no `rebuild-workspaces` step is needed. Verify with:
+`docker compose pull` fetches the newest published release into `:latest`, and
+`up -d` restarts the control plane on it. Each student's workspace container is
+recreated on the new workspace image the next time that student connects; no
+`rebuild-workspaces` step is needed.
+
+**A branch.** Building needs Bun on the host:
+
+```bash
+git fetch && git checkout -B dev origin/dev
+git submodule update --init --recursive
+bun run docker:build:control
+bun run docker:build:workspace
+docker compose up -d
+```
+
+The builds are tagged `:latest`, so `up -d` runs them. To pick an older release
+without the Update tab, set `CODERUNNER_TAG` (below).
+
+Verify either way with:
 
 ```bash
 curl http://localhost:4000/healthz
@@ -210,19 +227,12 @@ docker compose ps
 
 The health check should succeed and the control service should be `healthy`.
 
-Branch builds are meant for Option A. By hand they need Bun on the host:
-`git checkout -B dev origin/dev && git submodule update --init --recursive`,
-then `CODERUNNER_TAG=branch-dev bun run docker:build:control`, the same for
-`docker:build:workspace`, and `CODERUNNER_TAG=branch-dev docker compose up -d`.
-
 :::note[Legacy: `CODERUNNER_TAG` in `.env`]
 
 Older instructions pinned the version with `CODERUNNER_TAG=v2.5.0` in `.env`.
-That still works and overrides the checkout. Admin → Update keeps such a line
-current. To switch to checkout-based versions, delete the line and check out
-the release you run. Releases published before version pinning still pin
-`latest` in their compose file; for those, `CODERUNNER_TAG` remains the way to
-choose the version by hand.
+That still works: Compose then runs that tag instead of `:latest`, and Admin →
+Update keeps the line current. To switch to local `:latest` images, delete the
+line and run `docker compose up -d`.
 
 :::
 

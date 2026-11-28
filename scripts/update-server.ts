@@ -5,21 +5,23 @@
  * mounted at their host paths. It does what an operator does by hand:
  *
  *   git fetch --tags && git checkout <ref>
- *   docker compose pull            # release tag: prebuilt images
- *   bun run docker:build:*         # branch: build on this server
+ *   docker pull …:<tag>             # release: prebuilt images
+ *   bun run docker:build:*          # branch: build on this server
+ *   docker tag …:<tag> …:latest     # "latest" = what this server runs
  *   docker compose up -d
  *
- * then waits for the control service to report healthy and prunes the images
- * it replaced. If anything fails after the checkout moved, the checkout (and a
- * legacy .env pin) is restored; if the new control container never becomes
- * healthy, Compose is run again so the previous version comes back.
+ * then waits for the control service to report healthy and removes the images
+ * it replaced. If anything fails after the checkout moved, the checkout is
+ * restored; if the new control container never becomes healthy, the previous
+ * images are re-tagged and Compose is run again so the previous version comes
+ * back.
  *
- * The version is not written to .env. A release commit pins its own image tag
- * as the compose default, so the checkout *is* the version. The helper also
- * exports CODERUNNER_TAG for its own Compose calls, which covers branch builds
- * and release tags from before pinning. Legacy deployments that already pin
- * CODERUNNER_TAG in .env keep that line, updated in place, so their own
- * `docker compose up -d` (and GCE's boot-time render) stays on the same version.
+ * Nothing version-related is written to .env. The compose files run the local
+ * `:latest` images (their default tag), and the helper points `:latest` at the
+ * images it just pulled or built, so a later plain `docker compose up -d`
+ * redeploys exactly what is running. Legacy deployments that pin
+ * CODERUNNER_TAG in .env keep that line, updated in place; Compose then runs
+ * the versioned tag directly and nothing is re-tagged.
  *
  * Progress and a tail of every command's output are written to
  * CODERUNNER_UPDATE_JOB_FILE so the replacement control plane can report the
@@ -84,11 +86,9 @@ const kind = required("CODERUNNER_UPDATE_KIND");
 const jobFile = required("CODERUNNER_UPDATE_JOB_FILE");
 const tag = required("CODERUNNER_UPDATE_TAG");
 const expectedCommit = Bun.env.CODERUNNER_UPDATE_COMMIT?.trim() || null;
-const previousImages: ImageRefs | null = (() => {
-	const control = Bun.env.CODERUNNER_UPDATE_PREVIOUS_IMAGE?.trim();
-	const workspace = Bun.env.CODERUNNER_UPDATE_PREVIOUS_WORKSPACE_IMAGE?.trim();
-	return control && workspace ? { control, workspace } : null;
-})();
+/** Image ID the running control container was started from, if known. */
+const previousControlId =
+	Bun.env.CODERUNNER_UPDATE_PREVIOUS_IMAGE_ID?.trim() || null;
 const controlService = Bun.env.CODERUNNER_UPDATE_SERVICE?.trim() || "control";
 
 if (kind !== "tag" && kind !== "branch") {
@@ -104,8 +104,16 @@ let previousDotEnv: string | null = null;
 let legacyPin = false;
 let checkoutMoved = false;
 let dotEnvChanged = false;
-/** Image names the target compose files resolve to with CODERUNNER_TAG=tag. */
+/** The versioned images this update pulls or builds (`…:v2.5.0`, `…:branch-dev`). */
 let targetImages: ImageRefs | null = null;
+/** The names Compose runs (`…:latest`, or the legacy .env tag). */
+let deployImages: ImageRefs | null = null;
+/** Image IDs those names pointed at before this update, for rollback/cleanup. */
+let previousIds: { control: string | null; workspace: string | null } = {
+	control: null,
+	workspace: null,
+};
+let retagged = false;
 
 let job: Job = {
 	id: "unknown",
@@ -306,16 +314,25 @@ const git = (args: string[]) =>
 const gitQuiet = (args: string[]) =>
 	capture("git", ["-c", "safe.directory=*", "-C", repo, ...args]);
 
-/** Compose runs against the checkout with the deployment's image tag. */
-const composeEnv = (imageTag: string) => ({ CODERUNNER_TAG: imageTag });
-const compose = (args: string[], imageTag = tag) =>
-	run(dockerPath, ["compose", ...args], composeEnv(imageTag), { cwd: repo });
-
-/** `repo:tag` → `tag`; null for digests or untagged names. */
-function tagOf(image: string): string | null {
+/** `repo:tag` → `repo:<newTag>`. */
+function withTag(image: string, newTag: string): string {
 	const slash = image.lastIndexOf("/");
 	const colon = image.lastIndexOf(":");
-	return colon > slash ? image.slice(colon + 1) : null;
+	return `${colon > slash ? image.slice(0, colon) : image}:${newTag}`;
+}
+
+const compose = (args: string[]) =>
+	run(dockerPath, ["compose", ...args], {}, { cwd: repo });
+
+async function imageId(image: string): Promise<string | null> {
+	const result = await capture(dockerPath, [
+		"image",
+		"inspect",
+		"--format",
+		"{{.Id}}",
+		image,
+	]);
+	return result.exitCode === 0 && result.stdout ? result.stdout : null;
 }
 
 async function prepareCheckout(): Promise<void> {
@@ -346,9 +363,7 @@ async function prepareCheckout(): Promise<void> {
 		// branch records; a stale submodule checkout would build the wrong one.
 		await git(["submodule", "update", "--init", "--recursive", "--force"]);
 	} else {
-		// Compose reads the stack definition — including the release's pinned
-		// image tag — from the checkout, so a release is deployed by checking
-		// out its tag, exactly as an operator would.
+		// Keep the checkout's compose files in step with the release deployed.
 		await git(["checkout", "--force", "--detach", `refs/tags/${ref}^{commit}`]);
 	}
 	const commit = await git(["rev-parse", "HEAD"]);
@@ -371,12 +386,12 @@ async function prepareCheckout(): Promise<void> {
 	await saveJob();
 }
 
-/** Ask Compose which images the checked-out stack runs, for build/prune. */
-async function resolveTargetImages(): Promise<ImageRefs> {
+/** The control image and CODE_IMAGE the checked-out stack runs. */
+async function composeImages(env: Record<string, string>): Promise<ImageRefs> {
 	const config = await capture(
 		dockerPath,
 		["compose", "config", "--format", "json"],
-		composeEnv(tag),
+		env,
 		repo,
 	);
 	if (config.exitCode !== 0) {
@@ -402,25 +417,6 @@ async function resolveTargetImages(): Promise<ImageRefs> {
 			`The checked-out compose files have no ${controlService} service image and CODE_IMAGE.`,
 		);
 	}
-	// Report pinning so the log explains what a later plain `up -d` will run.
-	const pinned = await capture(
-		dockerPath,
-		["compose", "config", "--images"],
-		{},
-		repo,
-	);
-	const pinnedTag = pinned.stdout
-		.split("\n")
-		.map((image) => image.trim())
-		.find((image) => image.includes("coderunner-control"));
-	if (!legacyPin && pinnedTag && tagOf(pinnedTag) !== tag) {
-		await appendLog(
-			"output",
-			kind === "branch"
-				? `Note: this branch's compose files pin ${tagOf(pinnedTag)}. A later manual "docker compose up -d" will switch back to that release; use Admin → Update to stay on this branch build.`
-				: `Note: ${ref} predates version pinning in docker-compose.yml (it pins ${tagOf(pinnedTag)}). The update deploys ${tag}; a later manual "docker compose up -d" would run ${tagOf(pinnedTag)}.`,
-		);
-	}
 	return { control, workspace };
 }
 
@@ -433,14 +429,22 @@ async function updateImages(): Promise<void> {
 			: `Building images from ${ref}`,
 	);
 	await saveJob();
-	targetImages = await resolveTargetImages();
+	// What Compose runs now (normally `…:latest`), and the versioned names for
+	// this update in the same repositories.
+	deployImages = await composeImages({});
+	targetImages = {
+		control: withTag(deployImages.control, tag),
+		workspace: withTag(deployImages.workspace, tag),
+	};
 	job.image = targetImages.control;
+	previousIds = {
+		control: previousControlId ?? (await imageId(deployImages.control)),
+		workspace: await imageId(deployImages.workspace),
+	};
 	if (kind === "tag") {
-		// Pulls every service the stack defines (prod adds Caddy/Alloy), as
-		// `docker compose pull` would by hand. A missing release image fails
-		// here, before anything running is touched.
 		try {
-			await compose(["pull"]);
+			await run(dockerPath, ["pull", targetImages.control]);
+			await run(dockerPath, ["pull", targetImages.workspace]);
 		} catch (error) {
 			const detail = error instanceof Error ? error.message : String(error);
 			throw new Error(
@@ -455,7 +459,7 @@ async function updateImages(): Promise<void> {
 		const buildx = await capture(dockerPath, ["buildx", "version"]);
 		if (buildx.exitCode !== 0) {
 			throw new Error(
-				"This control image has no Docker buildx plugin, which branch builds need. Update to a release first (or update once by hand with git), then build the branch.",
+				"This control image has no Docker buildx plugin, which branch builds need. Update to a release first (or build once by hand), then build the branch.",
 			);
 		}
 		Bun.env.DOCKER_BUILDKIT = "1";
@@ -491,23 +495,33 @@ async function runBuild(
 }
 
 /**
- * Legacy deployments pin CODERUNNER_TAG in .env (the documented manual flow
- * before this change, and GCE's render-env). Keep that one line current so
- * the operator's own `docker compose up -d` stays on this version. Nothing is
- * ever added to .env.
+ * Point the names Compose runs at the new images. Normally that moves
+ * `:latest`; a legacy .env pin instead gets its CODERUNNER_TAG line rewritten,
+ * so Compose runs the versioned tag directly.
  */
-async function updateLegacyPin(): Promise<void> {
-	if (!legacyPin || previousDotEnv === null) return;
-	const lines = previousDotEnv.split(/\r?\n/u);
-	const next = lines
-		.map((line) =>
-			LEGACY_TAG_LINE.test(line) ? `CODERUNNER_TAG=${tag}` : line,
-		)
-		.join("\n");
-	if (next === previousDotEnv) return;
-	await writeFile(`${repo}/.env`, next, "utf8");
-	dotEnvChanged = true;
-	await appendLog("command", `$ .env (legacy pin) → CODERUNNER_TAG=${tag}`);
+async function activateImages(): Promise<void> {
+	if (!targetImages || !deployImages) return;
+	if (legacyPin && previousDotEnv !== null) {
+		const next = previousDotEnv
+			.split(/\r?\n/u)
+			.map((line) =>
+				LEGACY_TAG_LINE.test(line) ? `CODERUNNER_TAG=${tag}` : line,
+			)
+			.join("\n");
+		if (next !== previousDotEnv) {
+			await writeFile(`${repo}/.env`, next, "utf8");
+			dotEnvChanged = true;
+			await appendLog("command", `$ .env (legacy pin) → CODERUNNER_TAG=${tag}`);
+		}
+		deployImages = await composeImages({});
+		return;
+	}
+	for (const key of ["control", "workspace"] as const) {
+		if (targetImages[key] !== deployImages[key]) {
+			await run(dockerPath, ["tag", targetImages[key], deployImages[key]]);
+		}
+	}
+	retagged = true;
 }
 
 async function readDotEnv(): Promise<void> {
@@ -527,21 +541,41 @@ async function readDotEnv(): Promise<void> {
 	}
 }
 
-/** Remove only the two images this deployment replaced, then clean dangling layers. */
+/**
+ * Remove the tags of the images this update replaced (e.g. `…:v2.4.0`), then
+ * dangling layers. Tags the new deployment uses, and images still in use, stay.
+ */
 async function pruneImages(): Promise<void> {
-	const keep = new Set([targetImages?.control, targetImages?.workspace]);
-	const stale = [
-		...new Set([previousImages?.control, previousImages?.workspace]),
-	].filter((image): image is string => Boolean(image) && !keep.has(image));
-	for (const image of stale) {
-		try {
-			await run(dockerPath, ["image", "rm", image]);
-		} catch {
-			await appendLog(
-				"output",
-				`${image} is still in use or no longer exists; left in place.`,
-			);
-			await flushJob(true);
+	// Never remove a repository's `:latest`; only replaced versioned tags go.
+	const keep = new Set([
+		targetImages?.control,
+		targetImages?.workspace,
+		deployImages?.control,
+		deployImages?.workspace,
+		deployImages ? withTag(deployImages.control, "latest") : undefined,
+		deployImages ? withTag(deployImages.workspace, "latest") : undefined,
+	]);
+	const current = new Set([
+		deployImages ? await imageId(deployImages.control) : null,
+		deployImages ? await imageId(deployImages.workspace) : null,
+	]);
+	for (const id of [previousIds.control, previousIds.workspace]) {
+		if (!id || current.has(id)) continue;
+		const tags = await capture(dockerPath, [
+			"image",
+			"inspect",
+			"--format",
+			"{{range .RepoTags}}{{.}}\n{{end}}",
+			id,
+		]);
+		for (const name of tags.stdout.split("\n").map((entry) => entry.trim())) {
+			if (!name || keep.has(name)) continue;
+			try {
+				await run(dockerPath, ["image", "rm", name]);
+			} catch {
+				await appendLog("output", `${name} is still in use; left in place.`);
+				await flushJob(true);
+			}
 		}
 	}
 	await run(dockerPath, ["image", "prune", "-f"]);
@@ -551,14 +585,14 @@ async function pruneImages(): Promise<void> {
  * Wait for the recreated control container to pass its Compose healthcheck
  * (or, if a custom stack dropped the healthcheck, simply to be running).
  */
-async function waitForHealthyControl(imageTag: string): Promise<void> {
+async function waitForHealthyControl(): Promise<void> {
 	const deadline = Date.now() + HEALTH_TIMEOUT_MS;
 	let last = "unknown";
 	while (Date.now() < deadline) {
 		const ps = await capture(
 			dockerPath,
 			["compose", "ps", "-q", controlService],
-			composeEnv(imageTag),
+			{},
 			repo,
 		);
 		const id = ps.stdout.split("\n")[0]?.trim();
@@ -592,11 +626,18 @@ async function waitForHealthyControl(imageTag: string): Promise<void> {
 	);
 }
 
-/** Put the checkout and .env back the way they were. */
-async function restoreCheckout(): Promise<void> {
+/** Put the checkout, .env, and the names Compose runs back as they were. */
+async function restorePrevious(): Promise<void> {
 	if (dotEnvChanged && previousDotEnv !== null) {
 		await writeFile(`${repo}/.env`, previousDotEnv, "utf8");
 		dotEnvChanged = false;
+	}
+	if (retagged && deployImages) {
+		for (const key of ["control", "workspace"] as const) {
+			const id = previousIds[key];
+			if (id) await run(dockerPath, ["tag", id, deployImages[key]]);
+		}
+		retagged = false;
 	}
 	if (checkoutMoved && previousCheckout) {
 		await git(
@@ -618,35 +659,36 @@ async function restoreCheckout(): Promise<void> {
 async function rollback(reason: string): Promise<string> {
 	await appendLog("error", reason);
 	await appendLog("output", "Rolling back to the previous version");
-	await restoreCheckout();
-	const previousTag =
-		(previousImages && tagOf(previousImages.control)) ?? "latest";
-	await compose(["up", "-d"], previousTag);
-	await waitForHealthyControl(previousTag);
-	return `${reason} Rolled back to ${previousTag}.`;
+	if (!previousIds.control && !legacyPin) {
+		throw new Error("the previous control image is unknown");
+	}
+	await restorePrevious();
+	await compose(["up", "-d"]);
+	await waitForHealthyControl();
+	return `${reason} Rolled back to the previous version.`;
 }
 
 async function restartServices(): Promise<void> {
 	step(2, "running", "Recreating Compose services");
 	await saveJob();
-	await updateLegacyPin();
 	// The same `docker compose up -d` an operator runs. Student workspace
 	// containers are managed by the control plane and roll lazily (046).
 	try {
+		await activateImages();
 		await compose(["up", "-d"]);
-		await waitForHealthyControl(tag);
+		await waitForHealthyControl();
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		let message: string;
 		try {
 			message = await rollback(reason);
 		} catch (rollbackError) {
-			message = `${reason} Rollback also failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Restore the server with the git/CLI flow.`;
+			message = `${reason} Rollback also failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Restore the server by hand (git checkout, then docker compose up -d).`;
 		}
 		throw new Error(message);
 	}
-	// Prune only after the new stack is healthy, so a rollback still has the
-	// previous images on disk.
+	// Remove replaced images only after the new stack is healthy, so a
+	// rollback still has them.
 	await pruneImages();
 	step(2, "done", `Running ${tag}`);
 	job.state = "succeeded";
@@ -666,11 +708,10 @@ try {
 	await restartServices();
 } catch (error) {
 	let message = error instanceof Error ? error.message : String(error);
-	// Failed before Compose touched anything: the old version is still
-	// running, so only the checkout needs to go back.
+	// Failed before anything running was touched: only the checkout moved.
 	if (!composeStarted) {
 		try {
-			await restoreCheckout();
+			await restorePrevious();
 			message = `${message} The server was not changed.`;
 		} catch (restoreError) {
 			message = `${message} Restoring the checkout also failed: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}.`;

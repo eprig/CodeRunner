@@ -60,9 +60,8 @@ This pulls the same canonical name. The same pull runs as part of
 `latest` tag, so it replaces any locally built image of the same name.
 
 Publishing images to GHCR is done exclusively by CI (the release workflow in
-`.github/workflows/release.yml`), not from a developer machine. Run
-`bun run release:prepare <tag>`, commit, and push a `vMAJOR.MINOR.PATCH` tag
-on that commit, optionally with a suffix such as `-selinux-fix`.
+`.github/workflows/release.yml`), not from a developer machine. Push a
+`vMAJOR.MINOR.PATCH` tag, optionally with a suffix such as `-selinux-fix`.
 Tags whose commits are outside `main` are automatically published as GitHub
 prereleases, as are tags with prerelease suffixes on any branch. Only tags
 without a suffix whose commits are in `main` update `latest`. Classification
