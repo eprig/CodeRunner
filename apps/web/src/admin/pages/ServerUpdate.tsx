@@ -152,19 +152,81 @@ function branchTag(branch: string): string {
 		.slice(0, 60)}`;
 }
 
-function currentRefKey(data: ServerUpdateStatusResponse): string | null {
-	const version = data.repo.version;
-	if (!version) return null;
-	if (data.refs.tags.includes(version)) return `tag:${version}`;
-	const branch = data.refs.branches.find((name) => branchTag(name) === version);
-	return branch ? `branch:${branch}` : null;
-}
+type RunningVersion = {
+	/** What to call it: `v2.5.0`, `dev`, or `main / dev` when ambiguous. */
+	label: string;
+	kind: "tag" | "branch" | "unknown";
+	/** Picker key (`tag:<name>` / `branch:<name>`), when exactly one matches. */
+	key: string | null;
+	/** True when the branch was matched by commit, not recorded by the build. */
+	inferred: boolean;
+	/** The image tag, shown only when it doesn't already say the version. */
+	imageTag: string | null;
+};
 
-/** The version as a person would name it: `v2.5.0`, or `branch dev`. */
-function runningLabel(data: ServerUpdateStatusResponse): string {
-	const key = currentRefKey(data);
-	if (key?.startsWith("branch:")) return key.slice("branch:".length);
-	return data.repo.version ?? "Unknown version";
+const sameCommit = (a: string | undefined, b: string) =>
+	Boolean(a) && (a === b || a!.startsWith(b) || b.startsWith(a!));
+
+/**
+ * Name the running build the way a person would. Release images carry their
+ * tag; branch builds carry a `coderunner.git.branch` label (or the checkout
+ * says, from source). Older builds tagged `latest` say neither, so fall back
+ * to matching the running commit against the branch heads GitHub reports.
+ */
+function describeRunning(data: ServerUpdateStatusResponse): RunningVersion {
+	const { version, branch, commit } = data.repo;
+	const { tags, branches, commits } = data.refs;
+	if (version && tags.includes(version)) {
+		return {
+			label: version,
+			kind: "tag",
+			key: `tag:${version}`,
+			inferred: false,
+			imageTag: null,
+		};
+	}
+	const named =
+		branch ?? branches.find((name) => branchTag(name) === version) ?? null;
+	if (named) {
+		return {
+			label: named,
+			kind: "branch",
+			key: branches.includes(named) ? `branch:${named}` : null,
+			inferred: false,
+			imageTag: version && version !== branchTag(named) ? version : null,
+		};
+	}
+	if (commit) {
+		const tag = tags.find((name) => sameCommit(commits[`tag:${name}`], commit));
+		if (tag) {
+			return {
+				label: tag,
+				kind: "tag",
+				key: `tag:${tag}`,
+				inferred: true,
+				imageTag: version,
+			};
+		}
+		const matches = branches.filter((name) =>
+			sameCommit(commits[`branch:${name}`], commit),
+		);
+		if (matches.length > 0) {
+			return {
+				label: matches.join(" / "),
+				kind: "branch",
+				key: matches.length === 1 ? `branch:${matches[0]}` : null,
+				inferred: true,
+				imageTag: version,
+			};
+		}
+	}
+	return {
+		label: version ?? "Unknown version",
+		kind: "unknown",
+		key: null,
+		inferred: false,
+		imageTag: null,
+	};
 }
 
 function CommitLine({
@@ -495,9 +557,10 @@ export function ServerUpdate() {
 
 	const { repo, refs, job, demo, activity } = data;
 	const refsAvailable = refs.tags.length > 0 || refs.branches.length > 0;
-	const currentKey = currentRefKey(data);
+	const running = describeRunning(data);
+	const currentKey = running.key;
 	const latestTag = refs.tags[0] ?? null;
-	const isBranchBuild = currentKey?.startsWith("branch:") === true;
+	const isBranchBuild = running.kind === "branch";
 	const updateAvailable = Boolean(
 		latestTag &&
 			!isBranchBuild &&
@@ -550,8 +613,8 @@ export function ServerUpdate() {
 				<Banner tone="good" testId="update-reload">
 					<div className="flex flex-wrap items-center justify-between gap-3">
 						<span>
-							The server is now running <strong>{runningLabel(data)}</strong>.
-							Reload to use the updated admin pages.
+							The server is now running <strong>{running.label}</strong>. Reload
+							to use the updated admin pages.
 						</span>
 						<Button size="sm" onClick={() => window.location.reload()}>
 							Reload
@@ -600,11 +663,11 @@ export function ServerUpdate() {
 							className="text-2xl font-semibold"
 							data-testid="update-running-version"
 						>
-							{runningLabel(data)}
+							{running.label}
 						</span>
 						{isBranchBuild ? (
 							<Pill tone="neutral">Branch build</Pill>
-						) : repo.mode === "prebuilt" ? (
+						) : running.kind === "tag" ? (
 							<Pill tone="neutral">Release</Pill>
 						) : null}
 						{updateAvailable && latestTag && (
@@ -620,6 +683,20 @@ export function ServerUpdate() {
 								<Pill tone="good">Up to date</Pill>
 							)}
 					</div>
+					{(running.inferred ||
+						running.imageTag ||
+						running.kind === "unknown") && (
+						<p
+							className="text-xs text-muted-foreground"
+							data-testid="update-running-hint"
+						>
+							{running.kind === "unknown"
+								? `This build doesn't record its branch, and its commit isn't the latest on any branch${running.label === "latest" ? ", so “latest” can't be resolved" : ""}. Updating from this page records it.`
+								: running.inferred
+									? `Matched by commit: this build doesn't record its branch${running.imageTag ? ` (image tag ${running.imageTag})` : ""}.${running.kind === "branch" && running.key === null ? " Several branches point at this commit." : ""}`
+									: `Image tag ${running.imageTag}.`}
+						</p>
+					)}
 					{repo.commitInfo ? (
 						<CommitLine
 							commit={repo.commitInfo}

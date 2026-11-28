@@ -9,6 +9,8 @@
 // workspace image name outright (matching the control plane).
 
 const dockerPath = Bun.env.FRC_DOCKER_PATH ?? "docker";
+/** Git branch a local build came from; read by the admin Update tab. */
+const BRANCH_LABEL = "coderunner.git.branch";
 
 const dockerfiles = {
 	workspace: "containers/code/Dockerfile",
@@ -61,6 +63,11 @@ if (command === "build") {
 	if (source)
 		provenanceLabels.push(`org.opencontainers.image.source=${source}`);
 	provenanceLabels.push(`org.opencontainers.image.version=${version}`);
+	// The image tag alone ("latest") doesn't say which branch was built; the
+	// admin Update tab shows this instead. Omitted on a detached HEAD (a tag).
+	const branch = await gitOutput(["rev-parse", "--abbrev-ref", "HEAD"]);
+	if (branch && branch !== "HEAD")
+		provenanceLabels.push(`${BRANCH_LABEL}=${branch}`);
 }
 const args =
 	command === "build"

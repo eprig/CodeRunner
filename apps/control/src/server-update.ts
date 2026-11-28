@@ -38,6 +38,8 @@ const MAX_REFS = 200;
 /** A just-written job may not have its helper container yet; don't call it lost. */
 const HELPER_STARTUP_GRACE_MS = 30_000;
 export const UPDATER_NAME_PREFIX = "coderunner-updater-";
+/** Set by scripts/image.ts on local builds; release images built from a tag lack it. */
+export const BRANCH_LABEL = "coderunner.git.branch";
 
 export type ServerUpdateActivity = {
 	activeWorkspaces: number;
@@ -74,6 +76,7 @@ type ImageInfo = {
 	url: string | null;
 	commit: string | null;
 	version: string | null;
+	branch: string | null;
 	/** Container labels (OCI provenance from the image, plus Compose's own). */
 	labels: Record<string, string>;
 	/** Local git/.env metadata is for display only; only container metadata can drive an update. */
@@ -137,6 +140,7 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 		hostDir: "/demo/coderunner",
 		updatable: false,
 		versionPinnedInEnv: false,
+		branch: null,
 		commitInfo: {
 			sha: "demo0000000000000000000000000000000000000",
 			title: "Demo build",
@@ -282,6 +286,7 @@ async function readImageInfo(deps: ServerUpdateDeps): Promise<ImageInfo> {
 			url: labels["org.opencontainers.image.source"] ?? null,
 			commit: labels["org.opencontainers.image.revision"] ?? null,
 			version: labels["org.opencontainers.image.version"] ?? null,
+			branch: labels[BRANCH_LABEL]?.trim() || null,
 			labels,
 			fromLocalCheckout: false,
 		};
@@ -296,6 +301,7 @@ async function readImageInfo(deps: ServerUpdateDeps): Promise<ImageInfo> {
 		url: null,
 		commit: null,
 		version: null,
+		branch: null,
 		labels: {},
 		fromLocalCheckout: false,
 	};
@@ -344,6 +350,7 @@ async function readLocalImageInfo(repo: string): Promise<ImageInfo> {
 		url: remote,
 		commit,
 		version: tag,
+		branch: branch && branch !== "HEAD" ? branch : null,
 		labels: {},
 		fromLocalCheckout: true,
 	};
@@ -625,7 +632,7 @@ export async function getServerUpdateStatus(
 	const mode =
 		version && /^v\d+\.\d+\.\d+/u.test(version)
 			? "prebuilt"
-			: version?.startsWith("branch-")
+			: version?.startsWith("branch-") || image.branch
 				? "source"
 				: "unknown";
 
@@ -648,6 +655,7 @@ export async function getServerUpdateStatus(
 			// Compose passes .env into the control container (env_file), so a
 			// legacy CODERUNNER_TAG line shows up in this process's environment.
 			versionPinnedInEnv: Boolean(Bun.env.CODERUNNER_TAG?.trim()),
+			branch: image.branch,
 			commitInfo: runningCommit,
 		},
 		refs,

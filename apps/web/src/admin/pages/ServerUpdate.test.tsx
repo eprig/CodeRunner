@@ -22,6 +22,7 @@ const status: ServerUpdateStatusResponse = {
 		hostDir: "/srv/coderunner",
 		updatable: true,
 		versionPinnedInEnv: false,
+		branch: null,
 		commitInfo: {
 			sha: "abc123def456",
 			title: "Fix gamepad deadzone",
@@ -450,5 +451,78 @@ describe("ServerUpdate", () => {
 		expect(screen.getByTestId("update-last")).toHaveTextContent(
 			/Failed: dev by admin@example\.com, .* \(took 1m 32s\)/u,
 		);
+	});
+
+	describe("names a build tagged latest by its branch", () => {
+		const latest = (repo: Partial<ServerUpdateStatusResponse["repo"]>) => ({
+			...status,
+			repo: {
+				...status.repo,
+				version: "latest",
+				mode: "unknown" as const,
+				...repo,
+			},
+			refs: {
+				...status.refs,
+				commits: {
+					...status.refs.commits,
+					"branch:main": "maincommit",
+					"branch:dev": "devcommit",
+				},
+			},
+		});
+
+		test("from the build's branch label", async () => {
+			mockFetch({ status: () => latest({ branch: "dev", commit: "abc" }) });
+			render(<ServerUpdate />);
+			expect(
+				await screen.findByTestId("update-running-version"),
+			).toHaveTextContent("dev");
+			expect(screen.getByText("Branch build")).toBeInTheDocument();
+			expect(screen.getByTestId("update-running-hint")).toHaveTextContent(
+				"Image tag latest",
+			);
+			const user = userEvent.setup();
+			await user.click(screen.getByTestId("update-ref-picker"));
+			expect(screen.getByRole("option", { name: /^dev/u })).toHaveTextContent(
+				"Current",
+			);
+		});
+
+		test("by matching the running commit when the build has no label", async () => {
+			mockFetch({ status: () => latest({ commit: "maincommit" }) });
+			render(<ServerUpdate />);
+			expect(
+				await screen.findByTestId("update-running-version"),
+			).toHaveTextContent("main");
+			expect(screen.getByTestId("update-running-hint")).toHaveTextContent(
+				"Matched by commit",
+			);
+		});
+
+		test("lists every branch that points at the running commit", async () => {
+			const status = latest({ commit: "samecommit" });
+			status.refs.commits["branch:main"] = "samecommit";
+			status.refs.commits["branch:dev"] = "samecommit";
+			mockFetch({ status: () => status });
+			render(<ServerUpdate />);
+			expect(
+				await screen.findByTestId("update-running-version"),
+			).toHaveTextContent("main / dev");
+			expect(screen.getByTestId("update-running-hint")).toHaveTextContent(
+				"Several branches point at this commit",
+			);
+		});
+
+		test("says plainly when the branch can't be resolved", async () => {
+			mockFetch({ status: () => latest({ commit: "oldcommit" }) });
+			render(<ServerUpdate />);
+			expect(
+				await screen.findByTestId("update-running-version"),
+			).toHaveTextContent("latest");
+			expect(screen.getByTestId("update-running-hint")).toHaveTextContent(
+				"can't be resolved",
+			);
+		});
 	});
 });

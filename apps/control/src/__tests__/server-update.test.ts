@@ -374,6 +374,26 @@ describe("server update status", () => {
 		}
 	});
 
+	test("reports the branch a local build recorded in its label", async () => {
+		clearRefsCache();
+		const { context, root } = await deps({
+			labels: {
+				...imageLabels,
+				"org.opencontainers.image.version": "latest",
+				"coderunner.git.branch": "dev",
+			},
+			image: "ghcr.io/eprig/coderunner-control:latest",
+		});
+		try {
+			const status = await getServerUpdateStatus(context);
+			expect(status.repo.branch).toBe("dev");
+			expect(status.repo.version).toBe("latest");
+			expect(status.repo.mode).toBe("source");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	test("marks deployments built from a branch as source mode", async () => {
 		clearRefsCache();
 		const { context, root } = await deps({

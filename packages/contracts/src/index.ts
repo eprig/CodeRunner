@@ -842,6 +842,12 @@ export const serverUpdateRepoSchema = z.object({
 	 * line current; new deployments take the version from the checkout instead.
 	 */
 	versionPinnedInEnv: z.boolean(),
+	/**
+	 * Git branch the running build came from (the image's
+	 * `coderunner.git.branch` label, or the checkout when running from
+	 * source). Null for release images and for builds made before the label.
+	 */
+	branch: z.string().nullable(),
 	/** The running commit's title/date from GitHub, when it could be looked up. */
 	commitInfo: serverUpdateCommitSchema.nullable(),
 });
