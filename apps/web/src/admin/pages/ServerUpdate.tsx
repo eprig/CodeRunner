@@ -45,7 +45,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 			<span className="text-xs uppercase tracking-wide text-muted-foreground">
 				{label}
 			</span>
-			<span className="break-words text-sm">{children}</span>
+			<span className="wrap-break-word text-sm">{children}</span>
 		</div>
 	);
 }
@@ -604,9 +604,6 @@ export function ServerUpdate() {
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div>
 					<h2 className="text-xl font-semibold">Server Update</h2>
-					<p className="text-sm text-muted-foreground">
-						Deploy a published release, or build the server from a branch.
-					</p>
 				</div>
 			</div>
 

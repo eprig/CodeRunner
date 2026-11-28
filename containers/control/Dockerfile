@@ -14,6 +14,8 @@
 
 ARG BUN_VERSION=1.3.13
 ARG COMPOSE_VERSION=2.39.2
+ARG DOCKER_VERSION=27.5.1
+ARG BUILDX_VERSION=0.20.1
 
 # ── Stage 1: web shell build ───────────────────────────────────────────
 FROM oven/bun:${BUN_VERSION} AS web-build
@@ -90,30 +92,18 @@ COPY --from=ascope-build /repo/dist/advantagescope /
 # never changes, so a cached layer built against an older release is reused
 # even after a newer one is published — and the amd64/arm64 jobs could
 # otherwise resolve different releases if "latest" moved between them.
-FROM debian:bookworm-slim AS pathplanner-dist
+#
+# Runs on the oven/bun image the other stages already use, so it costs no
+# extra base-image pull; scripts/docker-pathplanner-dist.ts does the download
+# with the same helper as `bun run fetch:pathplanner`.
+FROM oven/bun:${BUN_VERSION} AS pathplanner-dist
 # The default belongs on the in-stage ARG: an ARG between stages is scoped to
 # the preceding stage, so a default declared there never reaches this one and
 # the tag would expand empty (composing a 404 `/download//...` URL).
 ARG PATHPLANNER_DIST_TAG=latest
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /pathplanner-dist \
-    && if [ "$PATHPLANNER_DIST_TAG" = "latest" ]; then \
-         url="https://github.com/mathewdunne/pathplanner-web/releases/latest/download/pathplanner-dist.tar.gz"; \
-         required=0; \
-       else \
-         url="https://github.com/mathewdunne/pathplanner-web/releases/download/${PATHPLANNER_DIST_TAG}/pathplanner-dist.tar.gz"; \
-         required=1; \
-       fi \
-    && if curl -fsSL "$url" -o /tmp/pathplanner-dist.tar.gz; then \
-         tar -xzf /tmp/pathplanner-dist.tar.gz -C /pathplanner-dist; \
-       elif [ "$required" = "1" ]; then \
-         echo "ERROR: pinned PathPlanner dist $PATHPLANNER_DIST_TAG could not be downloaded from $url"; \
-         exit 1; \
-       else \
-         echo "WARNING: PathPlanner dist unavailable; /pathplanner will 503"; \
-       fi
+WORKDIR /build
+COPY scripts/dist-download.ts scripts/fetch-pathplanner-dist.ts scripts/docker-pathplanner-dist.ts scripts/
+RUN bun scripts/docker-pathplanner-dist.ts
 
 # ── Stage 4: dist export (CI only) ─────────────────────────────────────
 # A filesystem-only stage holding just the built web shell + AdvantageScope
@@ -130,36 +120,53 @@ COPY --from=ascope-dist / /ascope-dist
 # ── Stage 5: runtime (default build target) ────────────────────────────
 FROM oven/bun:${BUN_VERSION}
 
-# Docker CLI plus the Compose plugin — the daemon is the host's, reached
-# through the bind-mounted /var/run/docker.sock (docker-out-of-docker;
+# Docker CLI plus the Compose and buildx plugins — the daemon is the host's,
+# reached through the bind-mounted /var/run/docker.sock (docker-out-of-docker;
 # workspace containers are siblings). curl serves the compose healthcheck.
-# The plugin lets the admin update helper finish with the same
-# `docker compose up -d` an operator would run, instead of hand-recreating the
-# control container. Pin the binary and verify its published checksum; both
-# architectures are built natively in release.yml.
-# git is also here for the update helper's branch checkout in the host repo.
-COPY --from=docker:27.5.1-cli /usr/local/bin/docker /usr/local/bin/docker
-# buildx makes `docker build` use BuildKit. Without it the CLI falls back to the
-# deprecated legacy builder: no shared build cache, no skipping of unused
-# stages, the whole context uploaded per build, and an empty TARGETARCH, which
-# breaks this very Dockerfile. The update helper builds branch images with it.
-COPY --from=docker:27.5.1-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+# - Compose lets the admin update helper finish with the same
+#   `docker compose up -d` an operator would run.
+# - buildx makes `docker build` use BuildKit. Without it the CLI falls back to
+#   the deprecated legacy builder: no shared build cache, no skipping of unused
+#   stages, the whole context uploaded per build, and an empty TARGETARCH,
+#   which breaks this very Dockerfile. The update helper builds branch images
+#   with it.
+# - git is for the update helper's checkout of the host repo.
+# All three are static downloads pinned by version and SHA-256 (rather than
+# copied out of a docker:*-cli image, which would be one more base image to
+# pull). Docker publishes no checksum file for its static CLI tarball; those two
+# sums were computed from the downloads. Both architectures are built natively
+# in release.yml.
 ARG TARGETARCH
 ARG COMPOSE_VERSION
+ARG DOCKER_VERSION
+ARG BUILDX_VERSION
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      amd64) arch=x86_64; sum=a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 ;; \
-      arm64) arch=aarch64; sum=54488fffb60782f3c8787a48b95ed15f49f5a3a85f4105304bd46db5edd9db61 ;; \
+      amd64) arch=x86_64; goarch=amd64; \
+        compose_sum=a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902; \
+        docker_sum=4f798b3ee1e0140eab5bf30b0edc4e84f4cdb53255a429dc3bbae9524845d640; \
+        buildx_sum=8c38f60308a895fa570f1410e453c5de11aafd65a99fa99965d96d24b6225a78 ;; \
+      arm64) arch=aarch64; goarch=arm64; \
+        compose_sum=54488fffb60782f3c8787a48b95ed15f49f5a3a85f4105304bd46db5edd9db61; \
+        docker_sum=e6b53725a73763ab3f988c73f8772eaed429754c1a579db5ff11f21990fd1817; \
+        buildx_sum=f7d867e9f1a3c00b32dd580f56594e229df05e3fb1b083b7099c91c2e7d2ce1e ;; \
       *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
     esac; \
     apt-get update -qq; \
     apt-get install -y --no-install-recommends curl ca-certificates git; \
     rm -rf /var/lib/apt/lists/*; \
     mkdir -p /usr/local/lib/docker/cli-plugins; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz; \
+    echo "${docker_sum}  /tmp/docker.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/docker.tgz -C /tmp docker/docker; \
+    install -m 0755 /tmp/docker/docker /usr/local/bin/docker; \
+    curl -fsSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-${goarch}" -o /tmp/docker-buildx; \
+    echo "${buildx_sum}  /tmp/docker-buildx" | sha256sum -c -; \
+    install -m 0755 /tmp/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx; \
     curl -fsSL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${arch}" -o /tmp/docker-compose; \
-    echo "${sum}  /tmp/docker-compose" | sha256sum -c -; \
+    echo "${compose_sum}  /tmp/docker-compose" | sha256sum -c -; \
     install -m 0755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose; \
-    rm /tmp/docker-compose
+    rm -rf /tmp/docker.tgz /tmp/docker /tmp/docker-buildx /tmp/docker-compose
 
 WORKDIR /app
 # Manifests before the install so the production node_modules layer caches
@@ -177,7 +184,7 @@ COPY scripts/ scripts/
 COPY catalog/ catalog/
 COPY --from=web-build /repo/apps/web/dist apps/web/dist
 COPY --from=ascope-dist / dist/advantagescope
-COPY --from=pathplanner-dist /pathplanner-dist dist/pathplanner
+COPY --from=pathplanner-dist /build/dist/pathplanner dist/pathplanner
 
 # License texts travel with the image, not just the repo: this image ships a
 # patched AdvantageScope build, and BSD-3-Clause requires the notice to

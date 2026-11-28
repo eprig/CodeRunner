@@ -8,11 +8,12 @@
 # Git metadata, except the AdvantageScope submodule gitdir.
 .git
 !.git/modules/vendor/AdvantageScope
-# ...but only the parts the AdvantageScope build reads (HEAD, config, refs,
-# objects). The rest changes without the code changing (reflogs on every
-# checkout, FETCH_HEAD, the index's stat cache, editor/GUI tool folders) and
-# would invalidate the cached wasm compile, the slowest step of the build.
-.git/modules/vendor/AdvantageScope/index
+# ...but only the parts the AdvantageScope build reads (HEAD, config, index,
+# refs, objects; build-ascope-lite.ts lists symlinks with `git ls-files`). The
+# rest changes without the code changing (reflogs on every checkout,
+# FETCH_HEAD, editor/GUI tool folders) and would invalidate the cached wasm
+# compile. scripts/image.ts usually skips that stage entirely by reusing a
+# prebuilt AdvantageScope (scripts/ascope-prebuilt.ts).
 .git/modules/vendor/AdvantageScope/logs
 .git/modules/vendor/AdvantageScope/hooks
 .git/modules/vendor/AdvantageScope/info
@@ -29,6 +30,7 @@ dist
 apps/web/dist
 
 # Runtime and local-only data.
+.cache
 data
 *.env
 .env*

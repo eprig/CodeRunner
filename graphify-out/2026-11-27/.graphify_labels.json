@@ -1,5 +1,4 @@
 {
-  "4": "App Storage (SQLite)",
   "12": "Docker Runtime Provider Core",
   "20": "E2E Runtime & Resilience Specs",
   "34": "Admin App Allowlist Page",
@@ -15,7 +14,6 @@
   "68": "Mock Workspace Runtime Provider",
   "74": "Contracts Schema Unit Tests",
   "75": "Import Manager (Git Clone Staging)",
-  "77": "Fake NT4 Test Server",
   "82": "Database Migrations Runner",
   "83": "Asset Upload Test Suite",
   "84": "Capacity Cap Test Suite",

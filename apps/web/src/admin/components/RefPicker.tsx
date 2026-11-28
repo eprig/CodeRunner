@@ -1,6 +1,52 @@
 import type { ServerUpdateKind } from "@frc-coderunner/contracts";
 import { Check, ChevronsUpDown, GitBranch, Search, Tag } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	useCallback,
+	useEffect,
+	useId,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { createPortal } from "react-dom";
+
+/** Height of the search row above the list, for fitting the popover. */
+const SEARCH_ROW_PX = 41;
+const MAX_LIST_PX = 288;
+const MIN_LIST_PX = 120;
+const VIEWPORT_MARGIN_PX = 8;
+
+type Placement = { style: CSSProperties; listMaxHeight: number };
+
+/**
+ * Place the popover under the trigger, or above it when that has more room,
+ * and cap the list to the space available so it always scrolls on screen.
+ * Fixed positioning in a portal keeps it out of any `overflow: hidden`
+ * ancestor (the admin Card clips its children).
+ */
+export function placePopover(trigger: DOMRect): Placement {
+	const below = window.innerHeight - trigger.bottom - VIEWPORT_MARGIN_PX;
+	const above = trigger.top - VIEWPORT_MARGIN_PX;
+	const placeAbove = below < MIN_LIST_PX + SEARCH_ROW_PX && above > below;
+	const space = (placeAbove ? above : below) - 4;
+	const listMaxHeight = Math.max(
+		MIN_LIST_PX,
+		Math.min(MAX_LIST_PX, space - SEARCH_ROW_PX),
+	);
+	return {
+		listMaxHeight,
+		style: {
+			position: "fixed",
+			left: trigger.left,
+			width: trigger.width,
+			...(placeAbove
+				? { bottom: window.innerHeight - trigger.top + 4 }
+				: { top: trigger.bottom + 4 }),
+		},
+	};
+}
 
 export type RefChoice = { kind: ServerUpdateKind; ref: string };
 
@@ -43,6 +89,9 @@ export function RefPicker({
 	const [query, setQuery] = useState("");
 	const [activeKey, setActiveKey] = useState<string | null>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const buttonRef = useRef<HTMLButtonElement>(null);
+	const popoverRef = useRef<HTMLDivElement>(null);
+	const [placement, setPlacement] = useState<Placement | null>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const id = useId();
@@ -94,10 +143,33 @@ export function RefPicker({
 		element?.scrollIntoView?.({ block: "nearest" });
 	}, [open, activeKey]);
 
+	const reposition = useCallback(() => {
+		const rect = buttonRef.current?.getBoundingClientRect();
+		if (rect) setPlacement(placePopover(rect));
+	}, []);
+
+	// Follow the trigger while open: the page can scroll or resize under it.
+	useLayoutEffect(() => {
+		if (!open) return;
+		reposition();
+		window.addEventListener("resize", reposition);
+		window.addEventListener("scroll", reposition, true);
+		return () => {
+			window.removeEventListener("resize", reposition);
+			window.removeEventListener("scroll", reposition, true);
+		};
+	}, [open, reposition]);
+
 	useEffect(() => {
 		if (!open) return;
 		const onPointerDown = (event: PointerEvent) => {
-			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+			const target = event.target as Node;
+			if (
+				!rootRef.current?.contains(target) &&
+				!popoverRef.current?.contains(target)
+			) {
+				setOpen(false);
+			}
 		};
 		document.addEventListener("pointerdown", onPointerDown);
 		return () => document.removeEventListener("pointerdown", onPointerDown);
@@ -149,6 +221,7 @@ export function RefPicker({
 	return (
 		<div ref={rootRef} className="relative w-full max-w-md">
 			<button
+				ref={buttonRef}
 				type="button"
 				className="flex w-full items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
 				onClick={() => (open ? setOpen(false) : openPicker())}
@@ -182,106 +255,114 @@ export function RefPicker({
 				/>
 			</button>
 
-			{open && (
-				<div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-zinc-700 bg-zinc-900 shadow-lg">
-					<div className="flex items-center gap-2 border-b border-zinc-800 px-3">
-						<Search className="size-4 shrink-0 text-muted-foreground" />
-						<input
-							ref={inputRef}
-							className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
-							placeholder="Search releases and branches"
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							onKeyDown={onKeyDown}
-							role="combobox"
-							aria-expanded={open}
-							aria-controls={listId}
-							aria-autocomplete="list"
-							aria-activedescendant={
-								activeKey ? `${id}-${activeKey}` : undefined
-							}
-							data-testid="update-ref-search"
-						/>
-					</div>
+			{open &&
+				createPortal(
 					<div
-						ref={listRef}
-						id={listId}
-						role="listbox"
-						aria-label="Versions"
-						className="max-h-72 overflow-auto py-1"
+						ref={popoverRef}
+						style={placement?.style}
+						className="z-50 overflow-hidden rounded border border-zinc-700 bg-zinc-900 shadow-lg"
+						data-testid="update-ref-popover"
 					>
-						{flat.length === 0 && (
-							<p className="px-3 py-2 text-sm text-muted-foreground">
-								No matches for “{query}”
-							</p>
-						)}
-						{sections.map(
-							(section) =>
-								section.options.length > 0 && (
-									// biome-ignore lint/a11y/useSemanticElements: ARIA listbox sections are role="group"; a <fieldset> is not valid inside role="listbox".
-									<div
-										key={section.kind}
-										role="group"
-										aria-labelledby={`${id}-${section.kind}-label`}
-									>
+						<div className="flex items-center gap-2 border-b border-zinc-800 px-3">
+							<Search className="size-4 shrink-0 text-muted-foreground" />
+							<input
+								ref={inputRef}
+								className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+								placeholder="Search releases and branches"
+								value={query}
+								onChange={(event) => setQuery(event.target.value)}
+								onKeyDown={onKeyDown}
+								role="combobox"
+								aria-expanded={open}
+								aria-controls={listId}
+								aria-autocomplete="list"
+								aria-activedescendant={
+									activeKey ? `${id}-${activeKey}` : undefined
+								}
+								data-testid="update-ref-search"
+							/>
+						</div>
+						<div
+							ref={listRef}
+							id={listId}
+							role="listbox"
+							aria-label="Versions"
+							style={{ maxHeight: placement?.listMaxHeight ?? MAX_LIST_PX }}
+							className="overflow-y-auto overscroll-contain py-1"
+						>
+							{flat.length === 0 && (
+								<p className="px-3 py-2 text-sm text-muted-foreground">
+									No matches for “{query}”
+								</p>
+							)}
+							{sections.map(
+								(section) =>
+									section.options.length > 0 && (
+										// biome-ignore lint/a11y/useSemanticElements: ARIA listbox sections are role="group"; a <fieldset> is not valid inside role="listbox".
 										<div
-											id={`${id}-${section.kind}-label`}
-											className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+											key={section.kind}
+											role="group"
+											aria-labelledby={`${id}-${section.kind}-label`}
 										>
-											{section.kind === "tag" ? (
-												<Tag className="size-3" />
-											) : (
-												<GitBranch className="size-3" />
-											)}
-											{section.label}
-											<span className="font-normal normal-case">
-												·{" "}
-												{section.kind === "tag"
-													? "prebuilt"
-													: "built on this server"}
-											</span>
+											<div
+												id={`${id}-${section.kind}-label`}
+												className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+											>
+												{section.kind === "tag" ? (
+													<Tag className="size-3" />
+												) : (
+													<GitBranch className="size-3" />
+												)}
+												{section.label}
+												<span className="font-normal normal-case">
+													·{" "}
+													{section.kind === "tag"
+														? "prebuilt"
+														: "built on this server"}
+												</span>
+											</div>
+											{section.options.map((option) => {
+												const isSelected =
+													value !== null && keyOf(value) === option.key;
+												return (
+													<div
+														key={option.key}
+														id={`${id}-${option.key}`}
+														data-key={option.key}
+														role="option"
+														aria-selected={isSelected}
+														tabIndex={-1}
+														className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${option.key === activeKey ? "bg-zinc-800" : ""}`}
+														onPointerMove={() => setActiveKey(option.key)}
+														onMouseDown={(event) => event.preventDefault()}
+														onClick={() => choose(option)}
+														onKeyDown={() => {}}
+													>
+														<Check
+															className={`size-4 shrink-0 ${isSelected ? "" : "invisible"}`}
+														/>
+														<span className="truncate">{option.ref}</span>
+														{option.latest && (
+															<RefBadge tone="latest">Latest</RefBadge>
+														)}
+														{option.current && (
+															<RefBadge tone="current">Current</RefBadge>
+														)}
+														{option.commit && (
+															<code className="ml-auto font-mono text-xs text-muted-foreground">
+																{option.commit.slice(0, 7)}
+															</code>
+														)}
+													</div>
+												);
+											})}
 										</div>
-										{section.options.map((option) => {
-											const isSelected =
-												value !== null && keyOf(value) === option.key;
-											return (
-												<div
-													key={option.key}
-													id={`${id}-${option.key}`}
-													data-key={option.key}
-													role="option"
-													aria-selected={isSelected}
-													tabIndex={-1}
-													className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm ${option.key === activeKey ? "bg-zinc-800" : ""}`}
-													onPointerMove={() => setActiveKey(option.key)}
-													onMouseDown={(event) => event.preventDefault()}
-													onClick={() => choose(option)}
-													onKeyDown={() => {}}
-												>
-													<Check
-														className={`size-4 shrink-0 ${isSelected ? "" : "invisible"}`}
-													/>
-													<span className="truncate">{option.ref}</span>
-													{option.latest && (
-														<RefBadge tone="latest">Latest</RefBadge>
-													)}
-													{option.current && (
-														<RefBadge tone="current">Current</RefBadge>
-													)}
-													{option.commit && (
-														<code className="ml-auto font-mono text-xs text-muted-foreground">
-															{option.commit.slice(0, 7)}
-														</code>
-													)}
-												</div>
-											);
-										})}
-									</div>
-								),
-						)}
-					</div>
-				</div>
-			)}
+									),
+							)}
+						</div>
+					</div>,
+					document.body,
+				)}
 		</div>
 	);
 }

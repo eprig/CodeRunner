@@ -79,3 +79,6 @@ lessons-repo-root/
 catalog/**/build/
 catalog/**/bin/
 catalog/**/.gradle/
+
+# Reusable AdvantageScope builds (scripts/ascope-prebuilt.ts)
+.cache/

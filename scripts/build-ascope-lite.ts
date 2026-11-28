@@ -91,9 +91,7 @@ type GitSymlink = { path: string; hash: string };
 
 async function gitSymlinksUnder(prefix: string): Promise<GitSymlink[]> {
 	const subprocess = Bun.spawn(
-		// Read the committed tree, not the index: the Docker build leaves the
-		// index out of its context so index churn can't invalidate the cache.
-		["git", "-C", ascopeRoot, "ls-tree", "-r", "HEAD", "--", prefix],
+		["git", "-C", ascopeRoot, "ls-files", "-s", prefix],
 		{
 			stdout: "pipe",
 			stderr: "pipe",
@@ -106,18 +104,18 @@ async function gitSymlinksUnder(prefix: string): Promise<GitSymlink[]> {
 	]);
 	if (exitCode !== 0) {
 		throw new Error(
-			stderr.trim() || `git ls-tree failed with exit ${exitCode}.`,
+			stderr.trim() || `git ls-files failed with exit ${exitCode}.`,
 		);
 	}
 
 	const symlinks: GitSymlink[] = [];
 	for (const line of stdout.split(/\r?\n/u)) {
-		// Format: "120000 blob <hash>\t<path>"
+		// Format: "120000 <hash> <stage>\t<path>"
 		if (!line.startsWith("120000 ")) continue;
 		const tabIdx = line.indexOf("\t");
 		if (tabIdx < 0) continue;
 		const fields = line.slice(0, tabIdx).split(/\s+/u);
-		const hash = fields[2];
+		const hash = fields[1];
 		const path = line.slice(tabIdx + 1);
 		if (!hash || !path) continue;
 		symlinks.push({ path, hash });

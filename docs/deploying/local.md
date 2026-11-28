@@ -215,8 +215,10 @@ bun run docker:build:workspace
 docker compose up -d
 ```
 
-The builds are tagged `:latest`, so `up -d` runs them. To pick an older release
-without the Update tab, set `CODERUNNER_TAG` (below).
+The builds are tagged `:latest`, so `up -d` runs them. The AdvantageScope part
+of the control build is reused from an identical earlier build or release when
+one exists, so a branch build usually takes a few minutes rather than ~30. To
+pick an older release without the Update tab, set `CODERUNNER_TAG` (below).
 
 Verify either way with:
 

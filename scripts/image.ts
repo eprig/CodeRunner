@@ -8,7 +8,15 @@
 // `docker compose up` — no re-tagging step. CODE_IMAGE overrides the
 // workspace image name outright (matching the control plane).
 
+import { resolve } from "node:path";
+import {
+	type PrebuiltAscope,
+	resolvePrebuiltAscope,
+	saveBuiltAscope,
+} from "./ascope-prebuilt";
+
 const dockerPath = Bun.env.FRC_DOCKER_PATH ?? "docker";
+const repoRoot = resolve(import.meta.dirname, "..");
 /** Git branch a local build came from; read by the admin Update tab. */
 const BRANCH_LABEL = "coderunner.git.branch";
 
@@ -38,7 +46,7 @@ if ((command !== "build" && command !== "pull") || !(kind! in dockerfiles)) {
 async function gitOutput(args: string[]): Promise<string | null> {
 	try {
 		const subprocess = Bun.spawn(["git", ...args], {
-			cwd: new URL("..", import.meta.url).pathname,
+			cwd: repoRoot,
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -69,6 +77,22 @@ if (command === "build") {
 	if (branch && branch !== "HEAD")
 		provenanceLabels.push(`${BRANCH_LABEL}=${branch}`);
 }
+// The control image's AdvantageScope stage needs the emsdk image and a ~30
+// minute compile. Reuse an identical earlier build (local cache or a release
+// asset) when there is one; CODERUNNER_ASCOPE_PREBUILT=0 always compiles.
+let prebuilt: PrebuiltAscope | null = null;
+if (
+	command === "build" &&
+	kind === "control" &&
+	Bun.env.CODERUNNER_ASCOPE_PREBUILT !== "0"
+) {
+	prebuilt = await resolvePrebuiltAscope({ repoRoot, git: gitOutput });
+	console.log(
+		prebuilt
+			? `Using prebuilt AdvantageScope Lite (${prebuilt.source}); skipping the emsdk compile.`
+			: "No prebuilt AdvantageScope Lite matches this checkout; compiling it.",
+	);
+}
 const args =
 	command === "build"
 		? [
@@ -78,6 +102,7 @@ const args =
 				"-t",
 				image,
 				...provenanceLabels.flatMap((label) => ["--label", label]),
+				...(prebuilt ? ["--build-context", `ascope-dist=${prebuilt.dir}`] : []),
 				".",
 			]
 		: ["pull", image];
@@ -94,5 +119,11 @@ if (exitCode !== 0) {
 	console.error(`docker ${args.join(" ")} failed with exit code ${exitCode}`);
 	process.exit(exitCode);
 }
-
-export {};
+if (
+	command === "build" &&
+	kind === "control" &&
+	!prebuilt &&
+	Bun.env.CODERUNNER_ASCOPE_PREBUILT !== "0"
+) {
+	await saveBuiltAscope({ repoRoot, git: gitOutput, dockerPath });
+}
