@@ -869,6 +869,8 @@ export const serverUpdateStatusResponseSchema = z.object({
 		/** Commit SHA for each `tag:<name>` / `branch:<name>` key. */
 		commits: z.record(z.string(), z.string()),
 		error: z.string().nullable(),
+		/** When the list was last fetched from GitHub. */
+		checkedAt: z.string().nullable(),
 	}),
 	job: z.object({
 		id: z.string().nullable(),
@@ -901,6 +903,11 @@ export const serverUpdateRefDetailsSchema = z.object({
 	kind: serverUpdateKindSchema,
 	ref: z.string(),
 	commit: serverUpdateCommitSchema.nullable(),
+	/**
+	 * For a branch: the release its docker-compose.yml pins as the default
+	 * image tag, i.e. what a plain `docker compose up -d` on that checkout runs.
+	 */
+	pinnedTag: z.string().nullable(),
 	release: z
 		.object({
 			name: z.string(),

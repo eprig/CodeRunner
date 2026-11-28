@@ -42,6 +42,14 @@ function githubFetch(url: string): Promise<Response> {
 			}),
 		);
 	}
+	if (url.includes("/contents/docker-compose.yml")) {
+		return Promise.resolve(
+			new Response(
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: compose-file interpolation, not a JS template.
+				"services:\n  control:\n    image: ns/coderunner-control:${CODERUNNER_TAG:-v2.5.0}\n",
+			),
+		);
+	}
 	if (url.includes("/releases/tags/")) {
 		return url.endsWith("/v2.5.0")
 			? Promise.resolve(
@@ -255,6 +263,7 @@ describe("server update helpers", () => {
 				"branch:feature/my-branch": "branchcommit00000000000000000000000000003",
 			},
 			error: null,
+			checkedAt: expect.any(String),
 		});
 	});
 
@@ -833,5 +842,42 @@ describe("update details for the admin page", () => {
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
+	});
+
+	test("reports which release a branch's compose file pins", async () => {
+		clearRefsCache();
+		const { context, root } = await deps();
+		try {
+			const branch = await getRefDetails(context, {
+				kind: "branch",
+				ref: "dev",
+			});
+			expect(branch.pinnedTag).toBe("v2.5.0");
+			const tag = await getRefDetails(context, { kind: "tag", ref: "v2.5.0" });
+			expect(tag.pinnedTag).toBeNull();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("a forced check bypasses caches and records when it ran", async () => {
+		clearRefsCache();
+		const urls: string[] = [];
+		const recording = (url: string, init?: RequestInit) => {
+			urls.push(url);
+			expect(init?.cache === undefined || init.cache === "no-store").toBe(true);
+			return githubFetch(url);
+		};
+		const first = await listRemoteRefs(
+			"https://github.com/eprig/CodeRunner",
+			recording,
+		);
+		expect(first.checkedAt).not.toBeNull();
+		await listRemoteRefs("https://github.com/eprig/CodeRunner", recording, {
+			force: true,
+		});
+		expect(urls).toHaveLength(4);
+		expect(urls.slice(2).every((url) => /[?&]_=\d+/u.test(url))).toBe(true);
+		expect(urls.slice(0, 2).some((url) => url.includes("_="))).toBe(false);
 	});
 });

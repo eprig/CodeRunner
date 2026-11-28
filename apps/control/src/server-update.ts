@@ -89,6 +89,7 @@ type RefsResult = {
 	/** Keyed by `tag:<name>` / `branch:<name>` so the updater can report a commit. */
 	commits: Record<string, string>;
 	error: string | null;
+	checkedAt: string | null;
 };
 
 type Cached<T> = { at: number; ttl: number; value: T };
@@ -157,6 +158,7 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 			"branch:dev": "demo0000000000000000000000000000000000000",
 		},
 		error: null,
+		checkedAt: null,
 	},
 	job: {
 		id: null,
@@ -402,10 +404,27 @@ function githubHeaders(): Record<string, string> {
 	return headers;
 }
 
-/** GET a GitHub API path, translating rate limits into an actionable message. */
-async function githubJson<T>(fetchImpl: FetchImpl, path: string): Promise<T> {
-	const response = await fetchImpl(`https://api.github.com${path}`, {
-		headers: githubHeaders(),
+/**
+ * GET a GitHub API path, translating rate limits into an actionable message.
+ * `fresh` is for an admin's explicit "Check for updates": GitHub marks API
+ * responses cacheable for 60 s, so ask intermediaries not to serve a cached
+ * copy and vary the URL so none can.
+ */
+async function githubResponse(
+	fetchImpl: FetchImpl,
+	path: string,
+	options: { fresh?: boolean; accept?: string } = {},
+): Promise<Response> {
+	const headers = githubHeaders();
+	if (options.accept) headers.accept = options.accept;
+	let url = `https://api.github.com${path}`;
+	if (options.fresh) {
+		headers["cache-control"] = "no-cache";
+		url += `${path.includes("?") ? "&" : "?"}_=${Date.now()}`;
+	}
+	const response = await fetchImpl(url, {
+		headers,
+		...(options.fresh ? { cache: "no-store" as RequestCache } : {}),
 	});
 	if (!response.ok) {
 		const limited =
@@ -426,7 +445,15 @@ async function githubJson<T>(fetchImpl: FetchImpl, path: string): Promise<T> {
 			response.status,
 		);
 	}
-	return (await response.json()) as T;
+	return response;
+}
+
+async function githubJson<T>(
+	fetchImpl: FetchImpl,
+	path: string,
+	options: { fresh?: boolean } = {},
+): Promise<T> {
+	return (await (await githubResponse(fetchImpl, path, options)).json()) as T;
 }
 
 /** Cache GitHub reads; 404s are cached as null like any other answer. */
@@ -480,6 +507,33 @@ function toCommit(raw: GithubCommit): ServerUpdateCommit | null {
 	};
 }
 
+const COMPOSE_TAG_DEFAULT = /\$\{CODERUNNER_TAG:-([^}]*)\}/u;
+
+/** The image tag a commit's docker-compose.yml runs by default. */
+async function pinnedTagAt(
+	fetchImpl: FetchImpl,
+	slug: string,
+	sha: string,
+): Promise<string | null> {
+	const path = `/repos/${slug}/contents/docker-compose.yml?ref=${encodeURIComponent(sha)}`;
+	const hit = githubCache.get(path);
+	if (hit && Date.now() - hit.at < hit.ttl) return hit.value as string | null;
+	let value: string | null = null;
+	try {
+		const text = await (
+			await githubResponse(fetchImpl, path, {
+				accept: "application/vnd.github.raw+json",
+			})
+		).text();
+		value = COMPOSE_TAG_DEFAULT.exec(text)?.[1]?.trim() || null;
+	} catch (error) {
+		if (!(error instanceof GitHubError && error.status === 404)) return null;
+	}
+	// Keyed by commit, so the answer never changes.
+	githubCache.set(path, { at: Date.now(), ttl: 24 * 60 * 60_000, value });
+	return value;
+}
+
 async function commitInfo(
 	fetchImpl: FetchImpl,
 	slug: string,
@@ -508,6 +562,7 @@ export async function listRemoteRefs(
 			error: url
 				? "Available refs are listed for GitHub repository URLs only."
 				: null,
+			checkedAt: null,
 		};
 	}
 
@@ -516,17 +571,27 @@ export async function listRemoteRefs(
 	const forced =
 		options.force === true && now - lastForcedRefresh >= MIN_FORCED_REFRESH_MS;
 	if (cached && !forced && now - cached.at < cached.ttl) return cached.value;
-	if (forced) lastForcedRefresh = now;
+	if (forced) {
+		lastForcedRefresh = now;
+		// Releases and comparisons may have changed too; a commit never does.
+		for (const key of githubCache.keys()) {
+			if (!key.includes("/commits/") && !key.includes("/contents/")) {
+				githubCache.delete(key);
+			}
+		}
+	}
 
 	try {
 		const [tags, branches] = await Promise.all([
 			githubJson<Array<{ name?: string; commit?: { sha?: string } }>>(
 				fetchImpl,
 				`/repos/${slug}/tags?per_page=100`,
+				{ fresh: forced },
 			),
 			githubJson<Array<{ name?: string; commit?: { sha?: string } }>>(
 				fetchImpl,
 				`/repos/${slug}/branches?per_page=100`,
+				{ fresh: forced },
 			),
 		]);
 		const commits: Record<string, string> = {};
@@ -549,6 +614,7 @@ export async function listRemoteRefs(
 				.slice(0, MAX_REFS),
 			commits,
 			error: null,
+			checkedAt: new Date(now).toISOString(),
 		};
 		refsCache.set(slug, { at: now, ttl: REFS_CACHE_MS, value: result });
 		return result;
@@ -560,6 +626,7 @@ export async function listRemoteRefs(
 			branches: cached?.value.branches ?? [],
 			commits: cached?.value.commits ?? {},
 			error: `Couldn't list refs from GitHub: ${message}`,
+			checkedAt: cached?.value.checkedAt ?? null,
 		};
 		refsCache.set(slug, { at: now, ttl: ERROR_CACHE_MS, value: result });
 		return result;
@@ -696,6 +763,7 @@ export async function getRefDetails(
 		kind,
 		ref,
 		commit: null,
+		pinnedTag: null,
 		release: null,
 		compare: null,
 		error: null,
@@ -727,7 +795,7 @@ export async function getRefDetails(
 	const refs = await listRemoteRefs(image.url, fetchImpl);
 	const target = refs.commits[`${kind}:${ref}`] ?? null;
 	try {
-		const [commit, release, compare] = await Promise.all([
+		const [commit, release, compare, pinnedTag] = await Promise.all([
 			target ? commitInfo(fetchImpl, slug, target) : Promise.resolve(null),
 			kind === "tag"
 				? cachedGithub<{
@@ -755,11 +823,15 @@ export async function getRefDetails(
 						DETAILS_CACHE_MS,
 					)
 				: Promise.resolve(null),
+			kind === "branch" && target
+				? pinnedTagAt(fetchImpl, slug, target)
+				: Promise.resolve(null),
 		]);
 		const status = compare?.status;
 		return {
 			...empty,
 			commit,
+			pinnedTag,
 			release: release
 				? {
 						name: release.name?.trim() || ref,

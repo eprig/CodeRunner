@@ -40,6 +40,7 @@ const status: ServerUpdateStatusResponse = {
 			"branch:dev": "branchcommit00000000000000000000000000001",
 		},
 		error: null,
+		checkedAt: new Date(Date.now() - 120_000).toISOString(),
 	},
 	job: {
 		id: null,
@@ -74,6 +75,7 @@ function details(
 			date: "2026-11-25T00:00:00.000Z",
 			url: null,
 		},
+		pinnedTag: kind === "branch" ? "v2.5.0" : null,
 		release:
 			kind === "tag"
 				? {
@@ -524,5 +526,76 @@ describe("ServerUpdate", () => {
 				"can't be resolved",
 			);
 		});
+	});
+
+	test("doesn't repeat the deployed commit when it heads the What's new list", async () => {
+		mockFetch({
+			details: (kind, ref) => {
+				const base = details(kind, ref);
+				return { ...base, commit: base.compare!.commits[0]! };
+			},
+		});
+		render(<ServerUpdate />);
+		expect(await screen.findByTestId("update-new-commits")).toHaveTextContent(
+			"Add lesson picker",
+		);
+		expect(screen.queryByTestId("update-selected-commit")).toBeNull();
+	});
+
+	test("checks for updates from beside the picker and reloads the selection's details", async () => {
+		const user = userEvent.setup();
+		const fetchMock = mockFetch();
+		render(<ServerUpdate />);
+		await screen.findByTestId("update-ref-details");
+		expect(screen.getByTestId("update-checked-at")).toHaveTextContent(
+			"Versions checked 2 minutes ago",
+		);
+		const detailCalls = () =>
+			fetchMock.mock.calls.filter((call) =>
+				String(call[0]).startsWith("/admin/server-update/ref"),
+			).length;
+		const before = detailCalls();
+		const check = screen.getByTestId("update-check");
+		// Lives in the same row as the version picker.
+		expect(check.parentElement).toContainElement(
+			screen.getByTestId("update-ref-picker"),
+		);
+		await user.click(check);
+		await waitFor(() => expect(detailCalls()).toBeGreaterThan(before));
+		expect(
+			fetchMock.mock.calls.some(
+				(call) => String(call[0]) === "/admin/server-update?refresh=1",
+			),
+		).toBe(true);
+	});
+
+	test("names the release a plain compose restart would switch a branch build to", async () => {
+		const user = userEvent.setup();
+		mockFetch();
+		render(<ServerUpdate />);
+		await user.click(await screen.findByTestId("update-ref-picker"));
+		await user.click(screen.getByRole("option", { name: /^dev/u }));
+		await waitFor(() =>
+			expect(screen.getByTestId("update-plan")).toHaveTextContent(
+				'running "docker compose up -d" yourself would switch the server to release v2.5.0',
+			),
+		);
+	});
+
+	test("skips that note when .env pins the version (legacy)", async () => {
+		const user = userEvent.setup();
+		mockFetch({
+			status: () => ({
+				...status,
+				repo: { ...status.repo, versionPinnedInEnv: true },
+			}),
+		});
+		render(<ServerUpdate />);
+		await user.click(await screen.findByTestId("update-ref-picker"));
+		await user.click(screen.getByRole("option", { name: /^dev/u }));
+		await screen.findByTestId("update-ref-details");
+		expect(screen.getByTestId("update-plan")).not.toHaveTextContent(
+			"docker compose up -d",
+		);
 	});
 });

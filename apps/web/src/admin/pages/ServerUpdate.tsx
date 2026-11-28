@@ -318,6 +318,15 @@ function RefDetailsPanel({
 		) : null;
 	}
 	const summary = details.compare ? compareSummary(details.compare) : null;
+	// The newest commit in "What's new" is the one deployed; only show it on
+	// its own when that list doesn't (a downgrade, or no comparison).
+	const listed =
+		details.compare?.status !== "behind"
+			? (details.compare?.commits.slice(0, 10) ?? [])
+			: [];
+	const showDeploysCommit =
+		details.compare?.status !== "identical" &&
+		!listed.some((commit) => commit.sha === details.commit?.sha);
 	const hiddenCommits = details.compare
 		? Math.max(0, details.compare.aheadBy - details.compare.commits.length)
 		: 0;
@@ -403,7 +412,7 @@ function RefDetailsPanel({
 						)}
 				</div>
 			)}
-			{details.commit && (
+			{details.commit && showDeploysCommit && (
 				<div className="space-y-1">
 					<p className="text-xs uppercase tracking-wide text-muted-foreground">
 						Deploys commit
@@ -429,6 +438,7 @@ export function ServerUpdate() {
 	const [choice, setChoice] = useState<RefChoice | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [checking, setChecking] = useState(false);
+	const [refreshCount, setRefreshCount] = useState(0);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [now, setNow] = useState(() => Date.now());
 	const [details, setDetails] = useState<ServerUpdateRefDetails | null>(null);
@@ -472,7 +482,12 @@ export function ServerUpdate() {
 	// commit changes, since the comparison is relative to it.
 	const runningCommit = data?.repo.commit ?? null;
 	const canQuery = Boolean(data?.repo.slug);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: runningCommit is deliberate; the comparison is relative to it.
+	// The selected ref's head commit: when a check finds new commits on it,
+	// its comparison and commit details must be reloaded too.
+	const selectedTarget = choice
+		? (data?.refs.commits[`${choice.kind}:${choice.ref}`] ?? null)
+		: null;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: runningCommit, selectedTarget, and refreshCount are deliberate re-fetch triggers.
 	useEffect(() => {
 		if (!choice || !canQuery) {
 			setDetails(null);
@@ -496,13 +511,14 @@ export function ServerUpdate() {
 		return () => {
 			cancelled = true;
 		};
-	}, [choice, canQuery, runningCommit]);
+	}, [choice, canQuery, runningCommit, selectedTarget, refreshCount]);
 
 	const checkForUpdates = async () => {
 		setChecking(true);
 		try {
 			await fetchStatus(true);
 			await refetch();
+			setRefreshCount((count) => count + 1);
 		} catch {
 			// The regular poll reports errors.
 		} finally {
@@ -585,21 +601,6 @@ export function ServerUpdate() {
 						Deploy a published release, or build the server from a branch.
 					</p>
 				</div>
-				{!demo && repo.slug && (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => void checkForUpdates()}
-						disabled={checking || active}
-						data-testid="update-check"
-					>
-						<RefreshCw
-							className={`size-4 ${checking ? "animate-spin" : ""}`}
-							aria-hidden="true"
-						/>
-						Check for updates
-					</Button>
-				)}
 			</div>
 
 			{error && (
@@ -782,6 +783,21 @@ export function ServerUpdate() {
 							onChange={setChoice}
 							disabled={!repo.updatable || !refsAvailable || busy || active}
 						/>
+						{!demo && repo.slug && (
+							<Button
+								variant="outline"
+								onClick={() => void checkForUpdates()}
+								disabled={checking || active}
+								title="Fetch the latest releases and branches from GitHub"
+								data-testid="update-check"
+							>
+								<RefreshCw
+									className={`size-4 ${checking ? "animate-spin" : ""}`}
+									aria-hidden="true"
+								/>
+								{checking ? "Checking…" : "Check for updates"}
+							</Button>
+						)}
 						<Button
 							onClick={() => void update()}
 							disabled={
@@ -796,6 +812,14 @@ export function ServerUpdate() {
 									: "Update server"}
 						</Button>
 					</div>
+					{refs.checkedAt && (
+						<p
+							className="-mt-2 text-xs text-muted-foreground"
+							data-testid="update-checked-at"
+						>
+							Versions checked <When at={refs.checkedAt} now={now} />
+						</p>
+					)}
 					{choice && (
 						<p
 							className="text-sm text-muted-foreground"
@@ -803,7 +827,12 @@ export function ServerUpdate() {
 						>
 							{choice.kind === "tag"
 								? `Checks out ${choice.ref} and pulls its prebuilt images. Usually a minute or two.`
-								: `Checks out ${choice.ref} and builds both images on this server. Expect 10+ minutes of heavy CPU use. Running "docker compose up -d" by hand later returns to the release this branch pins.`}
+								: `Checks out ${choice.ref} and builds both images on this server. Expect 10+ minutes of heavy CPU use.`}
+							{choice.kind === "branch" &&
+								!repo.versionPinnedInEnv &&
+								details?.ref === choice.ref &&
+								details.pinnedTag &&
+								` Reboots keep this build running, but running "docker compose up -d" yourself would switch the server to ${details.pinnedTag === "latest" ? "the latest release" : `release ${details.pinnedTag}`}, which is what ${choice.ref}'s docker-compose.yml points to. Use this page to update or redeploy instead.`}
 						</p>
 					)}
 					<RefDetailsPanel
