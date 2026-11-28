@@ -27,3 +27,26 @@ export function parseBuildProgressLine(raw: string): string | null {
 	const body = buildkit?.groups?.body;
 	return body ? body.slice(0, 400) : null;
 }
+
+/**
+ * Stateful variant for a whole build: BuildKit prints a step's header
+ * (`#12 [ascope-build 9/9] RUN …`) and later `#12 CACHED` on its own line, so
+ * remember headers by id and report a cache hit as `<header> (cached)`. That
+ * is what tells an admin the slow AdvantageScope compile was skipped.
+ */
+export function createBuildProgressTracker(): (raw: string) => string | null {
+	const headers = new Map<string, string>();
+	return (raw) => {
+		const line = stripAnsi(raw);
+		const header = /^#(\d+)\s+(\[[^\]]+\].*)$/u.exec(line);
+		if (header?.[1] && header[2]) {
+			headers.set(header[1], header[2].slice(0, 400));
+		}
+		const cached = /^#(\d+)\s+CACHED$/u.exec(line);
+		if (cached?.[1]) {
+			const known = headers.get(cached[1]);
+			return known ? `${known} (cached)` : null;
+		}
+		return parseBuildProgressLine(raw);
+	};
+}

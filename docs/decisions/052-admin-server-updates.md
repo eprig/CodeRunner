@@ -132,8 +132,21 @@ The cost is a release-prep commit per release, enforced by CI.
   to that release, and the page says so.
 - The helper runs as root, so files it checks out may be root-owned on the
   host.
-- The control image ships git and a pinned Compose plugin. The first upgrade to
-  a version with this tab must be done by hand.
+- The control image ships git, a pinned Compose plugin, and the buildx plugin
+  (from the pinned `docker` CLI image). Without buildx, `docker build` falls
+  back to the legacy builder: it leaves `TARGETARCH` empty, which fails the
+  control Dockerfile, shares no build cache, and uploads the whole context.
+  The helper refuses branch builds without buildx. The first upgrade to a
+  version with this tab, and the first branch build from an image without
+  buildx, must be done by hand or via a release.
+- Branch builds go through the host daemon's BuildKit cache, so an unchanged
+  AdvantageScope stage (the slow emsdk wasm compile) is reused across updates
+  and branches. Its cache key is the submodule commit, the patches, and two
+  scripts: `.dockerignore` keeps only `HEAD`, `config`, `refs`, and `objects`
+  of the submodule gitdir, because reflogs, `FETCH_HEAD`, the index's stat
+  cache, and tool folders change without the code changing.
+  `build-ascope-lite.ts` reads symlinks with `git ls-tree HEAD` so it doesn't
+  need the index. The job's progress line marks reused steps "(cached)".
 - `--remove-orphans` is deliberately not passed: workspace containers are
   labelled into the Compose project and would be removed.
 

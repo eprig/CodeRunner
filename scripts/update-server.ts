@@ -28,7 +28,7 @@
 
 import { readFile, rename, writeFile } from "node:fs/promises";
 import {
-	parseBuildProgressLine,
+	createBuildProgressTracker,
 	stripAnsi,
 } from "../apps/control/src/server-update-progress";
 
@@ -448,6 +448,18 @@ async function updateImages(): Promise<void> {
 			);
 		}
 	} else {
+		// BuildKit shares the daemon's build cache with every earlier build on
+		// this host, so an unchanged AdvantageScope stage is reused instead of
+		// recompiled. The legacy builder can't build this Dockerfile at all
+		// (it leaves TARGETARCH empty), so refuse up front rather than fail late.
+		const buildx = await capture(dockerPath, ["buildx", "version"]);
+		if (buildx.exitCode !== 0) {
+			throw new Error(
+				"This control image has no Docker buildx plugin, which branch builds need. Update to a release first (or update once by hand with git), then build the branch.",
+			);
+		}
+		Bun.env.DOCKER_BUILDKIT = "1";
+		Bun.env.BUILDKIT_PROGRESS = "plain";
 		const slash = targetImages.control.lastIndexOf("/");
 		const env: Record<string, string> = {
 			CODERUNNER_TAG: tag,
@@ -465,10 +477,11 @@ async function runBuild(
 	args: string[],
 	env: Record<string, string>,
 ): Promise<void> {
+	const track = createBuildProgressTracker();
 	await run("bun", args, env, {
 		cwd: repo,
 		onLine: async (line) => {
-			const progress = parseBuildProgressLine(line);
+			const progress = track(line);
 			if (progress) {
 				step(1, "running", progress);
 				await saveJob();

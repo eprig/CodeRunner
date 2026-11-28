@@ -8,6 +8,19 @@
 # Git metadata, except the AdvantageScope submodule gitdir.
 .git
 !.git/modules/vendor/AdvantageScope
+# ...but only the parts the AdvantageScope build reads (HEAD, config, refs,
+# objects). The rest changes without the code changing (reflogs on every
+# checkout, FETCH_HEAD, the index's stat cache, editor/GUI tool folders) and
+# would invalidate the cached wasm compile, the slowest step of the build.
+.git/modules/vendor/AdvantageScope/index
+.git/modules/vendor/AdvantageScope/logs
+.git/modules/vendor/AdvantageScope/hooks
+.git/modules/vendor/AdvantageScope/info
+.git/modules/vendor/AdvantageScope/gk
+.git/modules/vendor/AdvantageScope/description
+.git/modules/vendor/AdvantageScope/FETCH_HEAD
+.git/modules/vendor/AdvantageScope/ORIG_HEAD
+.git/modules/vendor/AdvantageScope/**/*.lock
 
 # Dependencies and build outputs (regenerated inside the build stages).
 node_modules

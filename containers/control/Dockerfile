@@ -139,6 +139,11 @@ FROM oven/bun:${BUN_VERSION}
 # architectures are built natively in release.yml.
 # git is also here for the update helper's branch checkout in the host repo.
 COPY --from=docker:27.5.1-cli /usr/local/bin/docker /usr/local/bin/docker
+# buildx makes `docker build` use BuildKit. Without it the CLI falls back to the
+# deprecated legacy builder: no shared build cache, no skipping of unused
+# stages, the whole context uploaded per build, and an empty TARGETARCH, which
+# breaks this very Dockerfile. The update helper builds branch images with it.
+COPY --from=docker:27.5.1-cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 ARG TARGETARCH
 ARG COMPOSE_VERSION
 RUN set -eux; \

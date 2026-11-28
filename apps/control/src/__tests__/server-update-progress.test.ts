@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { parseBuildProgressLine, stripAnsi } from "../server-update-progress";
+import {
+	createBuildProgressTracker,
+	parseBuildProgressLine,
+	stripAnsi,
+} from "../server-update-progress";
 
 describe("server build progress parsing", () => {
 	test("strips ANSI colors from Docker output", () => {
@@ -27,5 +31,16 @@ describe("server build progress parsing", () => {
 		).toBeNull();
 		expect(parseBuildProgressLine(" ---> 0123456789ab")).toBeNull();
 		expect(parseBuildProgressLine("")).toBeNull();
+	});
+
+	test("reports a cached step with its header", () => {
+		const track = createBuildProgressTracker();
+		expect(
+			track("#14 [ascope-build 9/9] RUN bun scripts/build-ascope-lite.ts"),
+		).toBe("[ascope-build 9/9] RUN bun scripts/build-ascope-lite.ts");
+		expect(track("#14 CACHED")).toBe(
+			"[ascope-build 9/9] RUN bun scripts/build-ascope-lite.ts (cached)",
+		);
+		expect(track("#99 CACHED")).toBeNull();
 	});
 });
