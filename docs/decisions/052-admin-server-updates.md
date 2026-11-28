@@ -166,8 +166,12 @@ The tab shows only what an admin acts on:
   how long it takes.
 - **Interruptions:** how many students are active and how many builds are
   running.
-- **While running:** a spinner with the step, elapsed time, and who started
-  it, plus a collapsible command log. A failed poll during the restart shows
+- **While running:** who started it, then the elapsed time beside one
+  overall progress bar. The bar estimates progress from the step states,
+  weighted per release or branch, plus the running step's own signals:
+  BuildKit's `[stage n/m]` counter, which image is downloading, or the health
+  wait. It never moves backwards, and the raw step text is its tooltip. A
+  collapsible command log keeps the detail. A failed poll during the restart shows
   "Reconnecting…" instead of an error, and a Reload prompt appears once the
   server runs a new commit.
 

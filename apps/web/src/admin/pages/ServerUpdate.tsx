@@ -140,6 +140,63 @@ function When({ at, now }: { at: string | null; now: number }) {
 	);
 }
 
+type JobForProgress = Pick<
+	ServerUpdateStatusResponse["job"],
+	"state" | "kind" | "steps" | "message" | "log"
+>;
+
+/**
+ * Share of the whole update each step usually takes. A release mostly
+ * downloads; a branch mostly builds.
+ */
+const STEP_WEIGHTS = {
+	tag: [0.1, 0.5, 0.4],
+	branch: [0.05, 0.85, 0.1],
+} as const;
+
+/**
+ * Overall progress (0–1) from the helper's step states plus whatever it says
+ * about the running step: BuildKit's `[stage n/m]` counter while building,
+ * which image is downloading, or that it is waiting for the health check.
+ * An estimate, never 0 or 100% while running.
+ */
+export function estimateProgress(job: JobForProgress): number {
+	if (job.state === "starting") return 0.02;
+	const weights = STEP_WEIGHTS[job.kind ?? "tag"];
+	const logged = (pattern: RegExp) =>
+		job.log.some(
+			(entry) => entry.kind === "command" && pattern.test(entry.text),
+		);
+	let total = 0;
+	for (const [index, step] of job.steps.entries()) {
+		const weight = weights[index] ?? 0;
+		if (step.state === "done") {
+			total += weight;
+			continue;
+		}
+		if (step.state !== "running") break;
+		let within = 0.3;
+		if (index === 1 && job.kind === "branch") {
+			// Two builds run back to back: control (with AdvantageScope), then
+			// the workspace image.
+			const counter = /\[[^\]]*?(\d+)\/(\d+)\]/u.exec(job.message ?? "");
+			const fraction = counter
+				? Math.min(1, Number(counter[1]) / Number(counter[2]))
+				: 0.1;
+			within = logged(/docker:build:workspace/u)
+				? 0.6 + 0.4 * fraction
+				: 0.6 * fraction;
+		} else if (index === 1) {
+			within = logged(/\bpull\b.*coderunner-workspace/u) ? 0.5 : 0.15;
+		} else if (index === 2) {
+			within = /waiting for/iu.test(job.message ?? "") ? 0.6 : 0.3;
+		}
+		total += weight * within;
+		break;
+	}
+	return Math.min(0.99, Math.max(0.02, total));
+}
+
 function logTime(at: string): string {
 	return /^\d{4}-/u.test(at) ? at.slice(11, 19) : at;
 }
@@ -460,6 +517,10 @@ export function ServerUpdate() {
 	// The commit this page's JS was served with. When the server reports a
 	// different one after an update, the admin bundle on screen is stale.
 	const loadedCommit = useRef<string | null>(null);
+	const progressRef = useRef<{ jobId: string | null; value: number }>({
+		jobId: null,
+		value: 0,
+	});
 	if (data && loadedCommit.current === null) {
 		loadedCommit.current = data.repo.commit ?? "";
 	}
@@ -592,6 +653,14 @@ export function ServerUpdate() {
 			repo.version !== latestTag,
 	);
 	const elapsed = active ? formatElapsed(job.startedAt, now) : null;
+	// Never let the bar move backwards within one job (estimates can dip, e.g.
+	// when BuildKit reports an earlier stage's counter).
+	const estimated = active ? estimateProgress(job) : 0;
+	if (progressRef.current.jobId !== job.id) {
+		progressRef.current = { jobId: job.id, value: 0 };
+	}
+	progressRef.current.value = Math.max(progressRef.current.value, estimated);
+	const percent = Math.round(progressRef.current.value * 100);
 	const lastDuration =
 		job.startedAt && job.finishedAt
 			? formatDuration(Date.parse(job.finishedAt) - Date.parse(job.startedAt))
@@ -707,7 +776,7 @@ export function ServerUpdate() {
 							</code>
 						</p>
 					)}
-					<div className="grid grid-cols-1 gap-4 border-t border-zinc-800 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+					<div className="grid grid-cols-1 gap-4 border-t border-zinc-800 pt-4 sm:grid-cols-2">
 						<Detail label="Repository">
 							{repo.url ? (
 								<a
@@ -722,22 +791,45 @@ export function ServerUpdate() {
 								"unknown"
 							)}
 						</Detail>
-						<Detail label="Server checkout">
-							<code className="font-mono text-xs">
-								{repo.hostDir ?? "not detected"}
-							</code>
-						</Detail>
 						<Detail label="Last update">
 							{job.state === "succeeded" || job.state === "failed" ? (
-								<span data-testid="update-last">
-									{job.state === "failed" ? (
-										<span className="text-red-300">Failed · </span>
-									) : null}
-									{job.ref ?? "unknown"}
-									{job.requestedBy ? ` by ${job.requestedBy}` : ""}
-									{job.finishedAt ? ", " : ""}
-									<When at={job.finishedAt} now={now} />
-									{lastDuration ? ` (took ${lastDuration})` : ""}
+								<span
+									className="flex flex-wrap items-center gap-x-1.5"
+									data-testid="update-last"
+								>
+									<span
+										className={
+											job.state === "failed" ? "text-red-300" : "text-green-300"
+										}
+									>
+										{job.state === "succeeded"
+											? "Succeeded"
+											: /rolled back/iu.test(job.message ?? "")
+												? "Failed, rolled back"
+												: "Failed"}
+									</span>
+									{/* The version is already shown above; name the ref only
+									    when this update didn't end on it. */}
+									{job.ref && currentKey !== `${job.kind}:${job.ref}` && (
+										<span>
+											· {job.kind === "tag" ? "release" : "branch"} {job.ref}
+										</span>
+									)}
+									{job.finishedAt && (
+										<span className="text-muted-foreground">
+											· <When at={job.finishedAt} now={now} />
+										</span>
+									)}
+									{lastDuration && (
+										<span className="text-muted-foreground">
+											· {lastDuration}
+										</span>
+									)}
+									{job.requestedBy && (
+										<span className="text-muted-foreground">
+											· {job.requestedBy}
+										</span>
+									)}
 								</span>
 							) : (
 								<span className="text-muted-foreground">
@@ -859,29 +951,49 @@ export function ServerUpdate() {
 
 			{active && (
 				<div
-					className="flex items-center gap-2 rounded border border-yellow-900 bg-yellow-950/40 p-3 text-sm text-yellow-200"
+					className="space-y-2 rounded border border-yellow-900 bg-yellow-950/40 p-3 text-sm text-yellow-200"
 					role="status"
 					data-testid="update-active-status"
 				>
-					<Loader2
-						className="size-4 shrink-0 animate-spin"
-						aria-hidden="true"
-					/>
-					<div className="min-w-0">
-						<span>
+					<div className="flex min-w-0 items-center gap-2">
+						<Loader2
+							className="size-4 shrink-0 animate-spin"
+							aria-hidden="true"
+						/>
+						<span className="truncate">
 							Updating
 							{job.ref
 								? ` to ${job.kind === "tag" ? "release" : "branch"} ${job.ref}`
 								: ""}
 							{job.commit ? ` · ${job.commit.slice(0, 12)}` : ""}
-							{elapsed ? ` · ${elapsed}` : ""}
 							{job.requestedBy ? ` · started by ${job.requestedBy}` : ""}
 						</span>
-						{job.message && (
-							<p className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
-								{job.message}
-							</p>
-						)}
+					</div>
+					<div className="flex items-center gap-3">
+						<span
+							className="w-20 shrink-0 font-mono text-xs tabular-nums"
+							data-testid="update-elapsed"
+						>
+							{elapsed ?? "0s"}
+						</span>
+						<div
+							className="h-2 flex-1 overflow-hidden rounded-full bg-yellow-950"
+							role="progressbar"
+							aria-label="Update progress"
+							aria-valuemin={0}
+							aria-valuemax={100}
+							aria-valuenow={percent}
+							title={job.message ?? undefined}
+							data-testid="update-progress"
+						>
+							<div
+								className="h-full rounded-full bg-yellow-400 transition-[width] duration-700 ease-out"
+								style={{ width: `${percent}%` }}
+							/>
+						</div>
+						<span className="w-9 shrink-0 text-right text-xs tabular-nums">
+							{percent}%
+						</span>
 					</div>
 				</div>
 			)}

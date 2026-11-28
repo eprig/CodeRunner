@@ -1,17 +1,17 @@
 # Graph Report - CodeRunner  (2026-11-27)
 
 ## Corpus Check
-- 482 files · ~318,878 words
+- 482 files · ~319,572 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 36 file(s) not represented in the graph (top: (none) 22, .lock 3, .example 2)
 
 ## Summary
-- 4767 nodes · 9250 edges · 328 communities (262 shown, 66 thin omitted)
+- 4770 nodes · 9255 edges · 324 communities (259 shown, 65 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 428 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e76237e2`
+- Built from commit: `c254a6e8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -34,13 +34,13 @@
 - config.ts
 - update-server.ts
 - caddy
-- storage.ts
+- getLogger
 - compilerOptions
 - E2E Runtime & Resilience Specs
 - with
 - components.json
 - contracts.ts
-- AdminApp.tsx
+- contracts.ts
 - HalSimBridge
 - steps
 - cn
@@ -56,10 +56,10 @@
 - extension.ts
 - Decision 013: V2 Acceptance Pass
 - website/package.json
-- ImportManager
+- auth/allowlist.ts
 - Seasonal Teardown
 - E2E Workspace Fixtures (2)
-- index.test.ts
+- AutoChoosersResponse
 - gradle-cache-prune.test.ts
 - Run Lifecycle Test Fixtures
 - Container Lease Cleanup CLI
@@ -67,7 +67,7 @@
 - ServerUpdate.tsx
 - Google Cloud Deployment
 - Day-to-Day Operations doc
-- control/package.json
+- metadata.ts
 - HALSim Bridge State Application
 - ref_react
 - name
@@ -97,7 +97,7 @@
 - Decision 035: Multi-Arch Images and CI/Release/Deploy Workflow Split
 - OAuth Credentials
 - contracts/package.json
-- theme-provider.tsx
+- src/runtime.ts
 - Database Migrations Runner
 - Asset Upload Test Suite
 - Capacity Cap Test Suite
@@ -121,7 +121,7 @@
 - steps
 - metrics.ts
 - 041 — Project Preview (Markdown + generated HTML reports)
-- useSimulationState
+- WorkspacePage.tsx
 - deploy.yml
 - default-deny route coverage test suite (Plan §A.7.6)
 - admin-routes.ts
@@ -139,7 +139,7 @@
 - test (Playwright base.extend AppFixtures)
 - web/package.json
 - Session Hook & Heartbeat
-- imports.ts
+- IconRail.tsx
 - App.tsx
 - Default-Deny Route Coverage
 - code-container-defaults.test.ts
@@ -148,19 +148,19 @@
 - tag
 - fetch-dist.ts
 - dependencies
-- Sim Debugging and Run Modes — Design
+- Decision 036: Editor migration openvscode-server to VSCodium reh-web
 - Build Failure.spec
 - useSession
 - control/tsconfig.json
 - coderunner-debug/tsconfig.json
-- 043 — Classroom join codes
+- classroom-sweeper.ts
 - Decision 039: PathPlanner integration
 - Halsim.test
 - Workspace Container Bind-Mount & Memory Bounds
 - 024 Container Memory Budget
 - Gamepad.test
 - Security Model doc
-- workspace-routes.ts
+- proxy.ts
 - java-tooling.spec.ts
 - deploy-cloudflare
 - preflight
@@ -178,10 +178,10 @@
 - scripts/tsconfig.json
 - Use Container Status.test
 - Website
-- index.test.ts
-- CatalogSource
-- RefPicker.tsx
-- preview-markdown.ts
+- FakeSocket
+- session login and ownership test suite
+- FakeSocket
+- AdminPage
 - Audit/Reconciliation Test Suite
 - Login.po
 - Cleanup Containers
@@ -203,22 +203,22 @@
 - converters.ts / WorkspaceRow
 - Icon Rail
 - gamepad.spec.ts
-- catalog.ts
+- imports.ts
 - Nt4AutoChooserBridge
 - gamepad.test.ts
-- RateLimitError
+- deploy.yml GitHub Actions workflow
 - Main (2)
 - AllianceToggle.tsx
 - write_files
-- CapacityExceededError
+- 047 — Cut proxied polling: push sim status over the run socket
 - fake-nt4.ts
-- capacity.test.ts
-- Review Focus
+- default-deny.test.ts
+- deps
 - ref_node_path
 - deploy
 - 040 — SELinux container mounts
 - Decision 029: Lessons and Modules (referenced)
-- login
+- server-update-routes.test.ts
 - verify
 - Extension Reconciliation.test
 - Users (2)
@@ -233,15 +233,15 @@
 - browserslist
 - 052 — Admin UI server updates; `:latest` is what the server runs
 - Decision 046: Recycle stale workspace containers
-- /admin/workspaces/:id/backup route (manual per-workspace backup)
+- @fontsource-variable/geist@^5.2.8
 - Storage
 - 049 — Prune idle workspace Gradle caches at startup
 - next-themes
-- react@^19.2.4
+- @frc-coderunner/contracts@workspace:*
 - Card (3)
 - coderunner-debug/README.md
 - Dialog (4)
-- Workspaces.tsx
+- shadcn@^4.7.0
 - run-sim.sh
 - AdvantageKit Logger
 - Vitest global test setup
@@ -265,26 +265,22 @@
 - engines
 - WorkspacePage.tsx
 - pathplanner-pane.spec.ts
-- containers/code/Dockerfile
+- zustand
 - Quick Start (Installation)
 - auth0.test.ts
-- vite.config.ts
 - Verify Ascope
 - 001-lite-nt4-endpoint-injection.patch
-- entrypoint.sh
+- coderunner dispatching CLI
 - selfInspect
 - Decision 010: Gradle Project Cache Isolation for Sim and LSP
 - class-variance-authority
 - Robot / Robot.java
 - cleanup-containers.ts / main()
 - release-workflow.test.ts / output
-- clsx@^2.1.1
-- react-icons
 - 029 — Lessons & Modules / Consequences
 - 040 — SELinux container mounts / Consequences
 - Rebuild Workspaces (2)
 - 039 — PathPlanner integration / Consequences
-- tw-animate-css@^1.4.0
 - useGamepad / listConnectedGamepads
 - migrate.ts
 - Docusaurus site config / docs/ content directory
@@ -352,14 +348,14 @@
 ## Surprising Connections (you probably didn't know these)
 - `Security and limits` --references--> `requireAdmin()`  [INFERRED]
   docs/decisions/052-admin-server-updates.md → apps/control/src/auth/middleware.ts
+- `Task 2: Guest users and the Better Auth join plugin` --references--> `ClassroomJoinRequest`  [INFERRED]
+  docs/superpowers/plans/2026-09-30-classroom-join-codes.md → packages/contracts/src/index.ts
 - `Task 3: Control plane — mode on runs, build terminal state, route` --references--> `RunCommandContext`  [INFERRED]
   docs/superpowers/plans/2026-10-14-sim-debugging.md → apps/control/src/runs.ts
 - `Student surface` --references--> `sessionResponse()`  [INFERRED]
   docs/superpowers/specs/2026-09-30-classroom-join-codes-design.md → apps/control/src/app/responses.ts
-- `Consequences` --references--> `flattenLessonModules()`  [INFERRED]
-  docs/decisions/051-module-folders.md → packages/contracts/src/index.ts
-- `rebuildWorkspaces()` --conceptually_related_to--> `Grafana ops dashboard screenshot: host VM, workspaces, runs, control-plane panels`  [AMBIGUOUS]
-  scripts/rebuild-workspaces.ts → website/static/img/screenshots/grafana-ops-dashboard.png
+- `Existing integration points` --references--> `requireWorkspaceOwnership()`  [INFERRED]
+  preview-plan.md → apps/control/src/auth/middleware.ts
 
 ## Import Cycles
 - 2-file cycle: `apps/control/src/catalog.ts -> apps/control/src/imports.ts -> apps/control/src/catalog.ts`
@@ -367,27 +363,27 @@
 ## Hyperedges (group relationships)
 - **Workspace image update flow** — docs_decisions_046_recycle_stale_workspace_containers, deploying_local_updating_coderunner_to_a_new_release, docs_deploying_gcloud_releasing, docs_development_workspace_image_doc [INFERRED 0.75]
 
-## Communities (328 total, 66 thin omitted)
+## Communities (324 total, 65 thin omitted)
 
 ### Community 0 - "classrooms.ts"
-Cohesion: 0.05
-Nodes (66): AdminClassroomContext, ClassroomJoinContext, classroomView(), handleAdminClassroomRoute(), log, auditActor(), BunUpgradeServer, AuditActor (+58 more)
+Cohesion: 0.07
+Nodes (49): AdminClassroomContext, ClassroomJoinContext, classroomView(), log, BunUpgradeServer, WorkspaceRouteContext, AuthCallbacks, classroomPlugin() (+41 more)
 
 ### Community 1 - "scripts"
 Cohesion: 0.04
 Nodes (47): scripts, allowlist:add, allowlist:list, allowlist:remove, audit:prune, backup, build, build:ascope (+39 more)
 
 ### Community 2 - "src/app.ts"
-Cohesion: 0.09
-Nodes (51): createApp (app.ts), handleAdminRoute(), applySecurityHeaders(), AssetManifest, contentTypeFor(), handleUploadAsset(), HAS_PROC_SELF_FD, pathplannerResponse() (+43 more)
+Cohesion: 0.10
+Nodes (52): AssetManifest, contentTypeFor(), handleUploadAsset(), HAS_PROC_SELF_FD, pathplannerResponse(), readScopeAssetManifest(), walk(), safeRelativeAssetPath() (+44 more)
 
 ### Community 3 - "WorkspaceId"
-Cohesion: 0.11
-Nodes (6): runtimeFromLease(), WorkspaceRuntime, WorkspaceRuntimeProvider, MockWorkspaceRuntimeProvider, seedRuntimeMissing(), WorkspaceId
+Cohesion: 0.10
+Nodes (7): runtimeFromLease(), ExecResult, WorkspaceRuntime, WorkspaceRuntimeProvider, MockWorkspaceRuntimeProvider, seedRuntimeMissing(), WorkspaceId
 
 ### Community 4 - "fixtures/app.ts"
-Cohesion: 0.17
-Nodes (17): createPathPlannerDist(), makeScriptedRunCommandFactory(), Commits 066141e / 1a4f5e6 (Vite base path revert), AppOptions, defaultRunCommandFactory, e2e/fixtures/app.ts fixture (ControlApp harness), test, cookieHeader() (+9 more)
+Cohesion: 0.20
+Nodes (11): createPathPlannerDist(), makeScriptedRunCommandFactory(), Commits 066141e / 1a4f5e6 (Vite base path revert), AppOptions, defaultRunCommandFactory, e2e/fixtures/app.ts fixture (ControlApp harness), preallocatePort(), test (+3 more)
 
 ### Community 5 - "websocket-router.test.ts"
 Cohesion: 0.22
@@ -395,7 +391,7 @@ Nodes (4): AppSocket, SIM_SNAPSHOT_PUSH_INTERVAL_MS, CloseCall, FakeSocket
 
 ### Community 6 - "server-update.ts"
 Cohesion: 0.06
-Nodes (57): BRANCH_LABEL, Cached, cachedGithub(), clearRefsCache(), commitInfo(), composeEnv(), DEMO_STATUS, EMPTY_JOB (+49 more)
+Nodes (55): BRANCH_LABEL, Cached, cachedGithub(), clearRefsCache(), commitInfo(), composeEnv(), DEMO_STATUS, EMPTY_JOB (+47 more)
 
 ### Community 7 - "control"
 Cohesion: 0.06
@@ -415,19 +411,19 @@ Nodes (28): description, devDependencies, @biomejs/biome@2.4.15, fast-check@^4.8
 
 ### Community 11 - "Classroom Join Codes — Design"
 Cohesion: 0.06
-Nodes (29): IdleManager, getSession(), 044 — Auth0 SSO, Decision, Validation, Task 3: Wire into boot, docs, decision log, Agreed requirements, Approach (+21 more)
+Nodes (29): IdleManager, getSession(), Global Constraints, Review Focus, Startup Gradle Cache Pruning Implementation Plan, Task 2: Prune module, Task 3: Wire into boot, docs, decision log, Admin surface (+21 more)
 
 ### Community 12 - "Docker Runtime Provider Core"
 Cohesion: 0.04
 Nodes (43): code:ts (describe("deployFilePathSchema", () => {), code:ts (pathplannerDistDir: string;), code:ts (export async function createPathPlannerDist(root: string): P), code:ts (const pathplannerDistDir = await createPathPlannerDist(root)), code:bash (bun run check:fix), code:ts (test("templates PathPlanner routes with bounded cardinality"), code:ts (if (path.startsWith("/pathplanner/")) return "/pathplanner/*), code:ts (if (suffix.startsWith("/api/deploy-files/"))) (+35 more)
 
 ### Community 13 - "containers/types.ts"
-Cohesion: 0.11
-Nodes (21): parseDockerStatsLine(), parsePercent(), statusFromLease(), upstreamEndpoints(), defaultDockerRunner(), dockerError(), runDockerCli(), ContainerOrchestratorOptions (+13 more)
+Cohesion: 0.18
+Nodes (13): parseDockerStatsLine(), parsePercent(), CapacityExceededError, ContainerOrchestratorOptions, DockerCommandResult, DockerRunner, HALSIM_CONTAINER_PORT, LocalDockerRuntimeProviderOptions (+5 more)
 
 ### Community 14 - "PreviewPane.tsx"
 Cohesion: 0.11
-Nodes (18): matchesQuery(), PreviewFrame, PreviewPane(), PreviewPaneProps, PreviewPlaceholder(), PreviewPlaceholderProps, splitPath(), Doc (+10 more)
+Nodes (19): @testing-library/user-event@^14.6.1, matchesQuery(), PreviewFrame, PreviewPane(), PreviewPaneProps, PreviewPlaceholder(), PreviewPlaceholderProps, splitPath() (+11 more)
 
 ### Community 15 - "config.ts"
 Cohesion: 0.11
@@ -441,9 +437,9 @@ Nodes (44): ANSI_ESCAPE, createBuildProgressTracker(), ESC, parseBuildProgressLi
 Cohesion: 0.08
 Nodes (24): command, image, networks, restart, volumes, depends_on, image, networks (+16 more)
 
-### Community 18 - "storage.ts"
-Cohesion: 0.05
-Nodes (49): addAllowlistEntry (auth/allowlist), isEmailAllowed (auth/allowlist), loadAllowlist (auth/allowlist), Admin allowlist endpoints, addAllowlistEntry(), AllowlistData, EMPTY, isEmailAllowed() (+41 more)
+### Community 18 - "getLogger"
+Cohesion: 0.15
+Nodes (20): reloadAllowlist(), Auth, createAuth(), isAuth0Callback(), log, refreshAllowlistBeforeCheck(), slugFromEmail(), slugify() (+12 more)
 
 ### Community 19 - "compilerOptions"
 Cohesion: 0.08
@@ -462,15 +458,15 @@ Cohesion: 0.09
 Nodes (21): aliases, components, hooks, lib, ui, utils, iconLibrary, menuAccent (+13 more)
 
 ### Community 23 - "contracts.ts"
-Cohesion: 0.08
-Nodes (49): AutoPanel(), AutoPanelProps, EmptyState(), preferredChooser(), TileHeader(), ControlsPanelProps, DriverStation(), DriverStationProps (+41 more)
+Cohesion: 0.07
+Nodes (50): ConsolePanelProps, ControlsPanelProps, DriverStation(), DriverStationProps, shouldIgnoreKeyboardTarget(), BigButton(), BigButtonProps, EnableDisableRow() (+42 more)
 
-### Community 24 - "AdminApp.tsx"
-Cohesion: 0.14
-Nodes (14): AdminApp(), AdminLayout(), Tab, tabs, Classroom, ClassroomGuest, Classrooms(), ClassroomsData (+6 more)
+### Community 24 - "contracts.ts"
+Cohesion: 0.10
+Nodes (22): MODE_CLASSES, MODE_LABELS, ModeColumnProps, pushState, release, select, statesEqual(), useGamepadChannel() (+14 more)
 
 ### Community 25 - "HalSimBridge"
-Cohesion: 0.20
+Cohesion: 0.19
 Nodes (4): defaultSnapshot(), HalSimBridge, HalSimBridgeUnavailableError, upstreamUrlFor()
 
 ### Community 26 - "steps"
@@ -478,16 +474,16 @@ Cohesion: 0.10
 Nodes (20): concurrency, cancel-in-progress, group, jobs, verify, name, on, pull_request (+12 more)
 
 ### Community 27 - "cn"
-Cohesion: 0.10
-Nodes (41): BINDING_GROUPS, Bumper(), clamp(), ControlsPanel(), DpadArm(), FaceButton(), GamepadVisualizer(), isInteractiveTarget() (+33 more)
+Cohesion: 0.12
+Nodes (34): @base-ui/react@^1.4.1, BINDING_GROUPS, Bumper(), clamp(), ControlsPanel(), DpadArm(), FaceButton(), GamepadVisualizer() (+26 more)
 
 ### Community 28 - "preview.ts"
-Cohesion: 0.12
-Nodes (26): isOpenFileInsideRoot(), ASSET_CONTENT_TYPES, discoverDocuments(), documentCsp(), documentKindFor(), errorDocument(), log, OpenedFile (+18 more)
+Cohesion: 0.05
+Nodes (55): dependencies, better-auth@^1.6.10, @frc-coderunner/contracts@workspace:*, @logtape/logtape@^2.0.7, markdown-it@^15.0.2, prom-client@^15.1.3, devDependencies, @types/markdown-it@^14.2.0 (+47 more)
 
 ### Community 29 - "SwitchProjectDialog.tsx"
-Cohesion: 0.11
-Nodes (31): MODE_CLASSES, MODE_LABELS, ModeColumnProps, CatalogBlock, catalogContainsModule(), countCatalogModules(), folderPathKey(), groupCatalogBlocks() (+23 more)
+Cohesion: 0.14
+Nodes (24): CatalogBlock, catalogContainsModule(), countCatalogModules(), folderPathKey(), groupCatalogBlocks(), CatalogTree(), CatalogTreeProps, KindTag() (+16 more)
 
 ### Community 30 - "Terms of Service"
 Cohesion: 0.14
@@ -503,15 +499,15 @@ Nodes (19): compilerOptions, allowImportingTsExtensions, erasableSyntaxOnly, lib
 
 ### Community 33 - "deploy-files.ts"
 Cohesion: 0.13
-Nodes (23): isInsideDirectory(), collectFiles(), deployFileDeleteResponse(), deployFileWriteResponse(), DeployWorkspace, findDeepestExistingAncestor(), HAS_PROC_SELF_FD, INVALID_PATH_ERROR (+15 more)
+Nodes (24): isInsideDirectory(), collectFiles(), deployFileDeleteResponse(), deployFilesSnapshotResponse(), deployFileWriteResponse(), DeployWorkspace, findDeepestExistingAncestor(), HAS_PROC_SELF_FD (+16 more)
 
 ### Community 34 - "Admin App Allowlist Page"
 Cohesion: 0.07
 Nodes (28): Adding an entry, Admin API break-glass, Audit log, Between sessions, Checking and adjusting the cap at runtime, code:bash (docker compose exec control coderunner <subcommand> <args>), code:bash (# Remove all entries before a date), code:bash (# Overall system status: workspaces, container states, activ) (+20 more)
 
 ### Community 35 - "devDependencies"
-Cohesion: 0.11
-Nodes (19): devDependencies, jsdom@^29.1.1, @testing-library/react@^16.3.2, @types/node@^24.12.0, @types/react@^19.2.14, @types/react-dom@^19.2.3, typescript@~5.9.3, vite@^7.3.1 (+11 more)
+Cohesion: 0.10
+Nodes (21): devDependencies, jsdom@^29.1.1, @testing-library/jest-dom@^6.9.1, @testing-library/react@^16.3.2, @types/node@^24.12.0, @types/react@^19.2.14, @types/react-dom@^19.2.3, typescript@~5.9.3 (+13 more)
 
 ### Community 37 - "extension.ts"
 Cohesion: 0.26
@@ -525,9 +521,9 @@ Nodes (9): Automated Verification, Comparison with V1, Decision, Decision 013: V
 Cohesion: 0.17
 Nodes (15): @docusaurus/module-type-aliases, @docusaurus/tsconfig, @docusaurus/types, devDependencies, @docusaurus/module-type-aliases@3.10.1, @docusaurus/tsconfig@3.10.1, @docusaurus/types@3.10.1, @types/react@^19.0.0 (+7 more)
 
-### Community 40 - "ImportManager"
-Cohesion: 0.31
-Nodes (3): ImportError, ImportManager, safeCatalogSubdir()
+### Community 40 - "auth/allowlist.ts"
+Cohesion: 0.18
+Nodes (17): addAllowlistEntry (auth/allowlist), Admin allowlist endpoints, addAllowlistEntry(), AllowlistData, EMPTY, isEmailAllowed(), loadAllowlist(), normalize() (+9 more)
 
 ### Community 41 - "Seasonal Teardown"
 Cohesion: 0.06
@@ -537,9 +533,9 @@ Nodes (28): disk.tf (Terraform disk config), code:bash (gcloud compute snapshots
 Cohesion: 0.07
 Nodes (26): Build times out, code:bash (# Confirm Docker is running), code:bash (SIM_PORT_RANGE=25810-25999), code:bash (# 1. Prune run logs (safest, often largest single contributo), code:bash (bun run backup), code:bash (docker compose restart control), code:bash (curl -H "Authorization: Bearer $ADMIN_TOKEN" \), code:bash (stat -c '%g' /var/run/docker.sock     # e.g. 999) (+18 more)
 
-### Community 43 - "index.test.ts"
-Cohesion: 0.14
-Nodes (18): schemas.property.test.ts (fast-check property tests), allianceStationSchema, bridgeConnectionSchema, containerStateSchema, driverStationPatchSchema, dsModeSchema, gamepadClientMessageSchema, gamepadStateSchema (+10 more)
+### Community 43 - "AutoChoosersResponse"
+Cohesion: 0.23
+Nodes (11): encodeMsgPack(), upstreamUrlFor(), AutoPanel(), AutoPanelProps, EmptyState(), preferredChooser(), TileHeader(), UseAutoChoosersReturn (+3 more)
 
 ### Community 44 - "gradle-cache-prune.test.ts"
 Cohesion: 0.20
@@ -555,11 +551,11 @@ Nodes (26): 1. Choose the new version, 1. Clone and configure, 2. Pull the new i
 
 ### Community 47 - "Auto Panel & Gamepad Channel"
 Cohesion: 0.15
-Nodes (14): catalog/modules/robot-starter license files, github.com/mathewdunne/coderunner-lessons, Authoring Lesson Modules doc, How Lessons Work doc, Importing a Team Project doc, git clone --no-single-branch --depth 1, 200 MB size limit / 6 imports per hour rate limit, hello-world module (+6 more)
+Nodes (15): Bundled lesson catalog (catalog/), catalog/modules/robot-starter license files, github.com/mathewdunne/coderunner-lessons, Authoring Lesson Modules doc, How Lessons Work doc, Importing a Team Project doc, git clone --no-single-branch --depth 1, 200 MB size limit / 6 imports per hour rate limit (+7 more)
 
 ### Community 48 - "ServerUpdate.tsx"
-Cohesion: 0.14
-Nodes (23): Banner(), branchTag(), CommitLine(), compareSummary(), describeRunning(), Detail(), fetchRefDetails(), fetchStatus() (+15 more)
+Cohesion: 0.09
+Nodes (34): keyOf(), Option, Placement, placePopover(), Props, RefBadge(), RefChoice, RefPicker() (+26 more)
 
 ### Community 49 - "Google Cloud Deployment"
 Cohesion: 0.09
@@ -569,17 +565,17 @@ Nodes (25): coderunner-ops.json dashboard, Changing env vars, code:bash (git tag
 Cohesion: 0.09
 Nodes (24): ADMIN_TOKEN admin API break-glass, data/allowlist.json, data/app.db (SQLite), Audit log system, bun run audit:prune, CODE_DISK_READ_LIMIT env var, CODE_MEMORY_LIMIT env var, coderunner CLI backup/restore subcommands (+16 more)
 
-### Community 51 - "control/package.json"
-Cohesion: 0.10
-Nodes (24): dependencies, better-auth@^1.6.10, @frc-coderunner/contracts@workspace:*, @logtape/logtape@^2.0.7, markdown-it@^15.0.2, prom-client@^15.1.3, devDependencies, @types/markdown-it@^14.2.0 (+16 more)
+### Community 51 - "metadata.ts"
+Cohesion: 0.19
+Nodes (11): upstreamEndpoints(), configMountType(), containerAttachedToNetwork(), containerHasPublishedPorts(), isLoopbackHost(), publishedPortFor(), v2LabelsMatch(), workspaceHomePath() (+3 more)
 
 ### Community 52 - "HALSim Bridge State Application"
 Cohesion: 0.09
 Nodes (22): Authoring Lesson Modules, code:text (modules.json              ← the catalog manifest (required, ), code:json ({), code:json ({), code:json ({), code:json ({), Example curriculum, Folder fields (+14 more)
 
 ### Community 53 - "ref_react"
-Cohesion: 0.14
-Nodes (26): useAdminPoll(), onVisibilityChange(), startPolling(), stopPolling(), Allowlist(), AllowlistData, fetchAllowlist(), AuditEntry (+18 more)
+Cohesion: 0.08
+Nodes (47): AdminApp(), AdminLayout(), Tab, tabs, useAdminPoll(), onVisibilityChange(), startPolling(), stopPolling() (+39 more)
 
 ### Community 54 - "name"
 Cohesion: 0.25
@@ -590,8 +586,8 @@ Cohesion: 0.13
 Nodes (14): compilerOptions, esModuleInterop, exactOptionalPropertyTypes, isolatedModules, lib, module, moduleResolution, noEmit (+6 more)
 
 ### Community 56 - "SimPaneSwitcher.tsx"
-Cohesion: 0.15
-Nodes (18): PathPlannerPaneProps, asTab(), readStoredTab(), SimPanePanels(), SimPanePanelsProps, SimPaneTab, SimPaneTabs(), SimPaneTabSelector() (+10 more)
+Cohesion: 0.14
+Nodes (17): PathPlannerPaneProps, asTab(), readStoredTab(), SimPanePanelsProps, SimPaneTab, SimPaneTabs(), SimPaneTabSelector(), SimPaneTabsProps (+9 more)
 
 ### Community 57 - "Run Manager Command Factory"
 Cohesion: 0.09
@@ -611,7 +607,7 @@ Nodes (13): 1. Prove the report delivery model, 2. Add contracts and read-only d
 
 ### Community 61 - "halsim.ts"
 Cohesion: 0.12
-Nodes (16): BridgeEntry, DEFAULT_DRIVER_STATION, DriverStationState, HalSimBridgeOptions, HalSimBridgeSnapshot, HalSimMessage, HalSimWebSocketFactory, JoystickWireState (+8 more)
+Nodes (15): BridgeEntry, DEFAULT_DRIVER_STATION, DriverStationState, HalSimBridgeOptions, HalSimBridgeSnapshot, HalSimMessage, HalSimWebSocketFactory, JoystickWireState (+7 more)
 
 ### Community 62 - "PathPlanner Deploy File Schemas"
 Cohesion: 0.18
@@ -634,8 +630,8 @@ Cohesion: 0.26
 Nodes (11): clear_sim_files(), current_process_group(), is_running_process(), process_state(), process_tree_groups(), process_tree_pids(), send_signal_to_groups(), send_signal_to_pids() (+3 more)
 
 ### Community 67 - "useProjectSwap.ts"
-Cohesion: 0.13
-Nodes (11): endpointFor(), INITIAL_STATE, ProjectSwapKind, ProjectSwapState, ProjectSwapStatus, FakeSocket, Listener, useProjectSwap() (+3 more)
+Cohesion: 0.15
+Nodes (15): endpointFor(), INITIAL_STATE, ProjectSwapKind, ProjectSwapState, ProjectSwapStatus, useProjectSwap(), UseProjectSwapReturn, readError() (+7 more)
 
 ### Community 68 - "Mock Workspace Runtime Provider"
 Cohesion: 0.10
@@ -643,7 +639,7 @@ Nodes (19): 001 — Sim container architecture, 1. Missing `WPILibNewCommands.js
 
 ### Community 69 - "src/index.ts"
 Cohesion: 0.03
-Nodes (58): AdminActionResponse, adminActionResponseSchema, AdminStatusResponse, adminStatusResponseSchema, AdminWorkspaceStatus, adminWorkspaceStatusSchema, authProviderSchema, autoChooserSchema (+50 more)
+Nodes (84): DEPLOY_FILES_WRITE_ROOT constant, schemas.property.test.ts (fast-check property tests), AdminActionResponse, adminActionResponseSchema, AdminStatusResponse, adminStatusResponseSchema, AdminWorkspaceStatus, adminWorkspaceStatusSchema (+76 more)
 
 ### Community 70 - "jobs"
 Cohesion: 0.15
@@ -658,8 +654,8 @@ Cohesion: 0.15
 Nodes (13): @docusaurus/core, @docusaurus/faster, @mdx-js/react, dependencies, clsx@^2.0.0, @docusaurus/core@3.10.1, @docusaurus/faster@3.10.1, @mdx-js/react@^3.0.0 (+5 more)
 
 ### Community 73 - "block-devices.ts"
-Cohesion: 0.50
-Nodes (3): ListBlockDevicesOptions, listWorkspaceDiskLimitDevices(), log
+Cohesion: 0.29
+Nodes (5): ListBlockDevicesOptions, listWorkspaceDiskLimitDevices(), log, defaultDockerRunner(), runDockerCli()
 
 ### Community 74 - "Contracts Schema Unit Tests"
 Cohesion: 0.11
@@ -674,8 +670,8 @@ Cohesion: 0.17
 Nodes (11): activationEvents, description, displayName, engines, vscode, extensionKind, license, main (+3 more)
 
 ### Community 77 - "nt4-auto.ts"
-Cohesion: 0.22
-Nodes (16): chooserRoots(), chooserSortKey(), displayKey(), isChooser(), normalizeTopicName(), Nt4AutoChooserBridgeOptions, Nt4AutoEntry, Nt4AutoWebSocketFactory (+8 more)
+Cohesion: 0.24
+Nodes (15): chooserRoots(), chooserSortKey(), displayKey(), isChooser(), normalizeTopicName(), Nt4AutoChooserBridgeOptions, Nt4AutoEntry, nt4Log (+7 more)
 
 ### Community 79 - "OAuth Credentials"
 Cohesion: 0.18
@@ -685,9 +681,9 @@ Nodes (11): 1. Allowlist the emails that may sign in, 2. Promote the first admin
 Cohesion: 0.18
 Nodes (11): dependencies, zod@^4.1.13, exports, license, name, private, scripts, typecheck (+3 more)
 
-### Community 81 - "theme-provider.tsx"
-Cohesion: 0.21
-Nodes (10): disableTransitionsTemporarily(), getSystemTheme(), isTheme(), ResolvedTheme, Theme, THEME_VALUES, ThemeProvider(), ThemeProviderContext (+2 more)
+### Community 81 - "src/runtime.ts"
+Cohesion: 0.22
+Nodes (5): ExecOptions, ManagedWorkspaceRuntime, WorkspaceRuntimeCommand, WorkspaceRuntimeExit, ContainerState
 
 ### Community 82 - "Database Migrations Runner"
 Cohesion: 0.11
@@ -710,8 +706,8 @@ Cohesion: 0.21
 Nodes (4): HalSimBridge, Nt4AutoChooserBridge, ReconnectingWsBridge.open, ReconnectingWsBridge
 
 ### Community 87 - "Button"
-Cohesion: 0.21
-Nodes (7): Button(), buttonVariants, digitsOnly(), JoinPage(), join(), onSubmit(), renderJoin()
+Cohesion: 0.32
+Nodes (5): digitsOnly(), JoinPage(), join(), onSubmit(), renderJoin()
 
 ### Community 88 - "Mode"
 Cohesion: 0.20
@@ -750,8 +746,8 @@ Cohesion: 0.13
 Nodes (15): AdvantageKit, patches/advantagescope/ source-level patches, AdvantageScope (upstream), 001-lite-nt4-endpoint-injection.patch, Licenses doc, Docusaurus, GitHub CLI, redhat.java extension (+7 more)
 
 ### Community 98 - "VSCodium-web Editor Migration Plan"
-Cohesion: 0.25
-Nodes (7): Decision 017: LinuxServer base migration, Decision 026: editor default theme, Decision 034: recursive chown retained, Decision 036: VSCodium reh-web migration, Decision 037: --disable-workspace-trust flag, openvscode-server (deprecated editor), VSCodium-web Editor Migration Plan
+Cohesion: 0.17
+Nodes (11): containers/code/Dockerfile, codium-server (VSCodium reh-web), Decision 017: LinuxServer base migration, Decision 026: editor default theme, Decision 034: recursive chown retained, Decision 036: VSCodium reh-web migration, Decision 037: --disable-workspace-trust flag, openvscode-server (deprecated editor) (+3 more)
 
 ### Community 99 - "Admin Allowlist Endpoints"
 Cohesion: 0.18
@@ -770,16 +766,16 @@ Cohesion: 0.20
 Nodes (10): needs, runs-on, steps, strategy, arch, platform, runner, build-workspace (+2 more)
 
 ### Community 103 - "metrics.ts"
-Cohesion: 0.08
-Nodes (27): activeWorkspaces, DockerStatsPoller, DockerStatsPollerOptions, log, containerCpuPercent, containerMemoryPercent, containerStartBuckets, httpBuckets (+19 more)
+Cohesion: 0.06
+Nodes (32): applySecurityHeaders(), fetch(), fetch (request handler), activeWorkspaces, DockerStatsPoller, DockerStatsPollerOptions, log, containerCpuPercent (+24 more)
 
 ### Community 104 - "041 — Project Preview (Markdown + generated HTML reports)"
 Cohesion: 0.29
 Nodes (6): 041 — Project Preview (Markdown + generated HTML reports), Alternatives rejected, Context, Decision, Tested compatibility boundary, The blocking constraint we found first
 
-### Community 105 - "useSimulationState"
-Cohesion: 0.07
-Nodes (20): connect (WS reconnect loop), logLine, startRun, FakeSocket, Listener, useRunChannel(), onMessage (nt4-endpoint-ready listener), ScopeStatus (+12 more)
+### Community 105 - "WorkspacePage.tsx"
+Cohesion: 0.11
+Nodes (21): DemoBanner(), EditorPane(), EditorPaneProps, PathPlannerPane, ScopePane, SimPanePanels(), EditorReachability, EditorStatus (+13 more)
 
 ### Community 106 - "deploy.yml"
 Cohesion: 0.22
@@ -790,8 +786,8 @@ Cohesion: 0.22
 Nodes (6): default-deny route coverage test suite (Plan §A.7.6), deploy-files snapshot/write/delete test suite, GATED_PATHS list, PUBLIC_PATHS list, safeRelativeAssetPath (asset path validation), PathPlanner (bundled, modified)
 
 ### Community 108 - "admin-routes.ts"
-Cohesion: 0.17
-Nodes (12): AdminRouteContext, log, Admin workspace backup action, Admin workspace restore action, createProjectArchive(), directorySizeBytes(), walk(), restoreProjectArchive() (+4 more)
+Cohesion: 0.15
+Nodes (22): AdminRouteContext, handleAdminRoute(), log, Admin workspace backup action, Admin workspace restore action, createProjectArchive(), directorySizeBytes(), walk() (+14 more)
 
 ### Community 109 - "Extension Reconciliation Test"
 Cohesion: 0.26
@@ -802,40 +798,36 @@ Cohesion: 0.25
 Nodes (8): scripts, build, dev, preview, test, test:coverage, test:watch, typecheck
 
 ### Community 111 - "044 — Auth0 SSO"
-Cohesion: 0.40
-Nodes (3): 048 — Auth0 roles from RBAC permissions, Decision, Validation
+Cohesion: 0.25
+Nodes (6): 044 — Auth0 SSO, Decision, Validation, 048 — Auth0 roles from RBAC permissions, Decision, Validation
 
 ### Community 112 - "Java Tooling Compatibility Decisions"
 Cohesion: 0.12
 Nodes (15): Backup options, Backups, code:bash (docker compose exec control coderunner backup), code:bash (bun run backup), code:block3 (data/backups/2026-05-16-151038/), code:bash (# Write the backup to a custom location), code:bash (bun run restore -- <backup-dir>), code:bash (# Preview what would be restored without writing anything) (+7 more)
 
 ### Community 113 - "Lessons & Testing Decision Docs"
-Cohesion: 0.09
-Nodes (19): coderunner dispatching CLI, apps/control/src/config.ts (ControlConfig), createApp() (ControlApp factory), Troubleshooting Guide, Admin and Metrics, Auth and OAuth, code:bash (bun run start -- --demo), Configuration Reference (+11 more)
+Cohesion: 0.11
+Nodes (17): apps/control/src/config.ts (ControlConfig), createApp() (ControlApp factory), Admin and Metrics, Auth and OAuth, code:bash (bun run start -- --demo), Configuration Reference, Demo mode and the `--demo` flag, Docker and Containers (+9 more)
 
 ### Community 114 - "RunManager"
-Cohesion: 0.08
-Nodes (24): consumeLines(), defaultRunCommandFactory(), dockerRunScript(), lineLooksReady(), RunJob, RunManager, AppStorage.createRunJob, AppStorage.getLatestRunJobForWorkspace (+16 more)
+Cohesion: 0.06
+Nodes (32): consumeLines(), defaultRunCommandFactory(), dockerRunScript(), lineLooksReady(), RunJob, RunManager, AppStorage.createRunJob, AppStorage.getLatestRunJobForWorkspace (+24 more)
 
 ### Community 115 - "CLI Reference & Control Container"
-Cohesion: 0.16
-Nodes (9): containers/lsp/bridge/bridge.ts, Generic ContainerOrchestrator, apps/web/src/java-lsp.ts, Eclipse JDT LS, Decision 008: V1 LSP Container and Bun-native Bridge, Semaphore in apps/control/src/containers.ts, Decision 009: LSP Reconnect, Bridge Serialization, Startup Throttling, LSP_STARTUP_CONCURRENCY env var (+1 more)
+Cohesion: 0.18
+Nodes (8): containers/lsp/bridge/bridge.ts, Generic ContainerOrchestrator, apps/web/src/java-lsp.ts, Decision 008: V1 LSP Container and Bun-native Bridge, Semaphore in apps/control/src/containers.ts, Decision 009: LSP Reconnect, Bridge Serialization, Startup Throttling, LSP_STARTUP_CONCURRENCY env var, Orchestrator-level LSP startup throttle (Semaphore)
 
 ### Community 116 - "dependencies"
 Cohesion: 0.12
-Nodes (17): dependencies, @base-ui/react@^1.4.1, @fontsource-variable/geist@^5.2.8, @frc-coderunner/contracts@workspace:*, lucide-react@^1.14.0, react-resizable-panels@^4.11.0, react-router@^7.15.0, shadcn@^4.7.0 (+9 more)
+Nodes (17): dependencies, clsx@^2.1.1, lucide-react@^1.14.0, react@^19.2.4, react-icons@^5.6.0, react-resizable-panels@^4.11.0, react-router@^7.15.0, sonner@^2.0.7 (+9 more)
 
 ### Community 117 - "ConsolePanel.tsx"
-Cohesion: 0.23
-Nodes (12): CodeStatus, CodeStatusPill(), TONES, codeStatusFromRun(), ConsoleLine(), ConsolePanel(), ConsolePanelProps, ConsoleViewport() (+4 more)
+Cohesion: 0.26
+Nodes (11): CodeStatus, CodeStatusPill(), TONES, codeStatusFromRun(), ConsoleLine(), ConsolePanel(), ConsoleViewport(), isNearBottom() (+3 more)
 
 ### Community 118 - "demo.ts"
-Cohesion: 0.26
-Nodes (9): DEMO_EMAIL, DEMO_NAME, DEMO_SLUG, DEMO_USER_ID, getDemoSession(), isAllowedWebSocketOrigin(), isLoopbackHost(), log (+1 more)
-
-### Community 120 - "test (Playwright base.extend AppFixtures)"
-Cohesion: 0.10
-Nodes (7): AdvantageScope Lite NT4 client, test (Playwright base.extend AppFixtures), preallocatePort(), e2e/fixtures/app.ts (ControlApp test fixture), startFakeHalsim(), startFakeNt4(), startFakeVscode()
+Cohesion: 0.22
+Nodes (8): createApp (app.ts), DEMO_EMAIL, DEMO_NAME, DEMO_SLUG, DEMO_USER_ID, getDemoSession(), seedDemoUser(), containers.ts barrel module
 
 ### Community 121 - "web/package.json"
 Cohesion: 0.17
@@ -845,21 +837,21 @@ Nodes (11): better-auth@^1.6.10, react-dom@^19.2.4, tailwindcss@^4.2.1, better-a
 Cohesion: 0.13
 Nodes (14): 031 — Containerized Control Plane, Addendum — non-root control container, Admin bootstrap: `CODERUNNER_ADMIN_EMAIL`, Bind-mount path translation, code:yaml (user: "${CODERUNNER_UID:-1000}:${CODERUNNER_GID:-1000}"), `coderunner` — a dispatching CLI, not raw scripts, Consequences, Context (+6 more)
 
-### Community 123 - "imports.ts"
-Cohesion: 0.18
-Nodes (12): CatalogLoadContext, ImportContext, ImportSend, log, normalizeCatalogModuleRepo(), ParsedImportUrl, parseGitHubUrl(), RateLimitEntry (+4 more)
+### Community 123 - "IconRail.tsx"
+Cohesion: 0.36
+Nodes (8): IconRail(), IconRailButton(), IconRailButtonProps, IconRailProps, RailTab, Tooltip(), TooltipContent(), TooltipTrigger()
 
 ### Community 124 - "App.tsx"
-Cohesion: 0.10
-Nodes (20): index.html (web app entry), App(), FallbackRedirect(), RootIndex(), router, Toaster(), TooltipProvider(), authClient (+12 more)
+Cohesion: 0.07
+Nodes (27): index.html (web app entry), App(), FallbackRedirect(), RootIndex(), router, disableTransitionsTemporarily(), getSystemTheme(), isTheme() (+19 more)
 
 ### Community 125 - "Default-Deny Route Coverage"
 Cohesion: 0.14
 Nodes (11): Idle auto-stop, Decision 011: V2 Editor Spike, Decision 012: V2 Code Image, Decision 017: linuxserver Base Migration, The Workspace Container doc, gitpod/openvscode-server base image, JDT Language Server, linuxserver/openvscode-server base image (+3 more)
 
 ### Community 126 - "code-container-defaults.test.ts"
-Cohesion: 0.16
-Nodes (11): Decision 033: workspace disk read limit, containers/code/root/.../init-frc-setup/run, robot-starter .vscode/settings.json, dryRun, main(), _repoRoot, run(), dockerfile (+3 more)
+Cohesion: 0.12
+Nodes (13): Decision 033: workspace disk read limit, containers/code/root/.../init-frc-setup/run, robot-starter .vscode/settings.json, catalogRoot, repoRoot, dryRun, main(), _repoRoot (+5 more)
 
 ### Community 127 - "flattenLessonModules"
 Cohesion: 0.29
@@ -881,17 +873,17 @@ Nodes (12): containers/control/Dockerfile, DistDownload, downloadAndExtract(), r
 Cohesion: 0.29
 Nodes (7): dependencies, fflate@^0.8.3, react@^19.2.1, react-dom@^19.2.1, react, react-dom, fflate
 
-### Community 132 - "Sim Debugging and Run Modes — Design"
-Cohesion: 0.14
-Nodes (13): Agreed requirements, Approach, CodeRunner extension (`containers/code/coderunner-debug/`), Container scripts (`containers/code/`), Contract (`packages/contracts`), Design, Docs, Error handling (+5 more)
+### Community 132 - "Decision 036: Editor migration openvscode-server to VSCodium reh-web"
+Cohesion: 0.20
+Nodes (7): code-server --abs-proxy-base-path (rejected), Decision 011: V2 editor spike, Decision 017: LinuxServer base migration, Decision 036: Editor migration openvscode-server to VSCodium reh-web, linuxserver/vscodium-web base image, VSCODE_WEBVIEW_COMMIT pin, --server-base-path flag
 
 ### Community 133 - "Build Failure.spec"
 Cohesion: 0.14
 Nodes (13): Building the image locally, code:bash (bun run docker:build:workspace), code:block2 (docker build -f containers/code/Dockerfile -t ghcr.io/mathew), code:bash (bun run docker:pull:workspace), code:bash (bun run docker:build:workspace), code:bash (bun run docker:rebuild-workspaces), code:bash (bun run docker:rebuild-workspaces -- --dry-run), Editor acceptance smoke (+5 more)
 
 ### Community 134 - "useSession"
-Cohesion: 0.19
-Nodes (8): fetchJson(), loadSession, LoadState, sendHeartbeat, VALID_SESSION, useSession(), onSwapComplete, SessionResponse
+Cohesion: 0.22
+Nodes (7): fetchJson(), loadSession, LoadState, sendHeartbeat, useSession(), onSwapComplete, SessionResponse
 
 ### Community 135 - "control/tsconfig.json"
 Cohesion: 0.33
@@ -901,13 +893,13 @@ Nodes (5): compilerOptions, tsBuildInfoFile, extends, include, ../../tsconfig.ba
 Cohesion: 0.33
 Nodes (5): compilerOptions, lib, extends, include, ../../../tsconfig.base.json
 
-### Community 137 - "043 — Classroom join codes"
-Cohesion: 0.33
-Nodes (5): clientIp(), 043 — Classroom join codes, Alternatives rejected, Constraints, Context
+### Community 137 - "classroom-sweeper.ts"
+Cohesion: 0.08
+Nodes (20): clientIp(), ClassroomSweeper, ClassroomSweeperOptions, cleanupClassroom(), log, SYSTEM_ACTOR, classroomJoinsSettled(), listClassroomsNeedingCleanup() (+12 more)
 
 ### Community 138 - "Decision 039: PathPlanner integration"
-Cohesion: 0.18
-Nodes (11): Decision 039: PathPlanner integration, Deploy-files API (/u/:slug/api/deploy-files/...), deploy-cloudflare job in deploy.yml, deploy.yml GitHub Actions workflow, GCE docker compose stack (control/caddy/alloy), PATHPLANNER_DIST_TAG pin, coderunner rebuild-workspaces CLI, release.yml GitHub Actions workflow (+3 more)
+Cohesion: 0.40
+Nodes (5): Decision 039: PathPlanner integration, Deploy-files API (/u/:slug/api/deploy-files/...), PathPlanner (upstream), PathPlanner topbar tab (iframe beside AdvantageScope), pathplanner-web fork (mathewdunne/pathplanner-web)
 
 ### Community 139 - "Halsim.test"
 Cohesion: 0.15
@@ -929,9 +921,9 @@ Nodes (3): Archive 001: Sim container architecture, Archive 002: AdvantageScope 
 Cohesion: 0.13
 Nodes (14): Admin role, Audit log, Authentication, code:json ({), Container isolation, Control plane container privileges, Demo mode, Email allowlist (+6 more)
 
-### Community 144 - "workspace-routes.ts"
-Cohesion: 0.12
-Nodes (34): deployFilesSnapshotResponse(), parseDeployFilePath(), previewDocumentsResponse(), halsimWebSocketResponse(), HOP_BY_HOP_HEADERS, log, nt4AliveResponse(), nt4WebSocketResponse() (+26 more)
+### Community 144 - "proxy.ts"
+Cohesion: 0.15
+Nodes (21): halsimWebSocketResponse(), HOP_BY_HOP_HEADERS, log, nt4AliveResponse(), nt4WebSocketResponse(), probeVscodeReady(), requestedProtocols(), stripHopByHopHeaders() (+13 more)
 
 ### Community 145 - "java-tooling.spec.ts"
 Cohesion: 0.18
@@ -950,8 +942,8 @@ Cohesion: 0.20
 Nodes (8): is_safe_component(), reconcile-extensions.sh script, ExtensionRecord, fixture(), reconcileScript, record(), repoRoot, temporaryRoots
 
 ### Community 149 - "Decision 037: Workspace cache aliases, extension pins, and trust"
-Cohesion: 0.12
-Nodes (8): code-server --abs-proxy-base-path (rejected), Decision 011: V2 editor spike, Decision 017: LinuxServer base migration, Decision 036: Editor migration openvscode-server to VSCodium reh-web, Decision 037: Workspace cache aliases, extension pins, and trust, Decision 038: Java tooling compatibility, extension reconciliation, and real-image smoke, bun run e2e:workspace-java real-container smoke, --server-base-path flag
+Cohesion: 0.22
+Nodes (3): Decision 037: Workspace cache aliases, extension pins, and trust, Decision 038: Java tooling compatibility, extension reconciliation, and real-image smoke, bun run e2e:workspace-java real-container smoke
 
 ### Community 150 - "Middleware"
 Cohesion: 0.17
@@ -970,12 +962,12 @@ Cohesion: 0.14
 Nodes (12): Google API Services User Data Policy, Changes to this policy, Children's privacy, Contact, How long it is kept, How the information is used, Privacy Policy, What information is collected (+4 more)
 
 ### Community 154 - "Workspace Image development guide"
-Cohesion: 0.25
-Nodes (9): bun run e2e:workspace-java (real Java workspace smoke), ghcr.io/mathewdunne/coderunner-workspace image, workspace-template compose helper service, Testing doc, bun run docker:build:workspace, Workspace Image development guide, Pull workspace image from GHCR, linuxserver/vscodium-web base image (+1 more)
+Cohesion: 0.33
+Nodes (7): bun run e2e:workspace-java (real Java workspace smoke), ghcr.io/mathewdunne/coderunner-workspace image, workspace-template compose helper service, Testing doc, bun run docker:build:workspace, Workspace Image development guide, Pull workspace image from GHCR
 
 ### Community 155 - "helpers.ts"
-Cohesion: 0.10
-Nodes (24): stripHopByHopHeaders, ControlAppOptions, AuditLogEntry, RunCommandFactory, CreateBeforeHook, GATED_PATHS, PUBLIC_PATHS, createAdvantageScopeDist() (+16 more)
+Cohesion: 0.11
+Nodes (33): stripHopByHopHeaders, ControlAppOptions, GithubImportContext, RunCommandFactory, expireRunningStatusCache(), fakeContainerFor(), stopFakeContainer(), cookieFrom() (+25 more)
 
 ### Community 156 - "PathPlanner Tab"
 Cohesion: 0.07
@@ -1001,21 +993,9 @@ Nodes (10): code:bash (git clone https://github.com/mathewdunne/CodeRunner coder
 Cohesion: 0.33
 Nodes (5): Build, Deployment, Installation, Local Development, Website
 
-### Community 162 - "index.test.ts"
-Cohesion: 0.15
-Nodes (11): DEPLOY_FILES_WRITE_ROOT constant, authProvidersResponseSchema, autoChooserPatchSchema, autoChoosersResponseSchema, deployFilePathSchema, deployFilesSnapshotResponseSchema, importResponseSchema, lessonFolderNameSchema (+3 more)
-
-### Community 163 - "CatalogSource"
-Cohesion: 0.21
-Nodes (7): workspaces.current_module column, CatalogSource, BundledCatalogSource (catalog.ts), createCatalogSource (catalog.ts), parseCatalogRepo (catalog.ts), RemoteCatalogSource (catalog.ts), ImportError (imports.ts)
-
-### Community 164 - "RefPicker.tsx"
-Cohesion: 0.24
-Nodes (9): keyOf(), Option, Placement, placePopover(), Props, RefBadge(), RefChoice, RefPicker() (+1 more)
-
-### Community 165 - "preview-markdown.ts"
-Cohesion: 0.48
-Nodes (5): documentShell(), escapeHtml(), md, renderMarkdownDocument(), renderPreviewErrorDocument()
+### Community 163 - "session login and ownership test suite"
+Cohesion: 0.22
+Nodes (6): isEmailAllowed (auth/allowlist), loadAllowlist (auth/allowlist), workspaces.current_module column, ensureWorkspaceForUser (storage), session login and ownership test suite, databaseHooks.user.create.before hook (Better Auth)
 
 ### Community 166 - "Audit/Reconciliation Test Suite"
 Cohesion: 0.15
@@ -1043,11 +1023,11 @@ Nodes (8): container_leases table (V1 core schema), idx_container_leases_lsp_por
 
 ### Community 172 - "vitest"
 Cohesion: 0.08
-Nodes (23): sonner@^2.0.7, @testing-library/jest-dom@^6.9.1, viteConfig, BASE_MODULES, MockEntry, MockModule, { mockModules }, renderDialog() (+15 more)
+Nodes (19): viteConfig, BASE_MODULES, MockEntry, MockModule, { mockModules }, renderDialog(), startSwap, readError() (+11 more)
 
 ### Community 173 - "fixtures/runtime.ts"
-Cohesion: 0.15
-Nodes (14): ControlApp in-process fixture / createApp(), ControlApp, loginAs (Seeded Auth Fixture), MockWorkspaceRuntimeProvider, runtime.ts Fixture Helpers, Commit d111f70 (driver-station payload shape bug), seedRuntimeRunning() / seedWorkspaceProject() runtime fixture, seedRuntimeRunning() (+6 more)
+Cohesion: 0.14
+Nodes (16): ControlApp in-process fixture / createApp(), ControlApp, loginAs (Seeded Auth Fixture), MockWorkspaceRuntimeProvider, runtime.ts Fixture Helpers, Commit d111f70 (driver-station payload shape bug), startFakeHalsim(), startFakeVscode() (+8 more)
 
 ### Community 174 - "web/tsconfig.json"
 Cohesion: 0.40
@@ -1101,45 +1081,49 @@ Nodes (9): 008 - V1 LSP container and Bun-native bridge, Browser LSP client exte
 Cohesion: 0.21
 Nodes (7): Decision 022 — skip Docker smoke / import tests, connectGamepad(), installGamepadShim(), setGamepadAxes(), DriverStationPage (page object), Commit 95f450d (auto chooser stale fix), Commit cb9fea6 (gamepad selection persistence + no-lease)
 
-### Community 187 - "catalog.ts"
-Cohesion: 0.13
-Nodes (10): BundledCatalogSource, CatalogManifest, findModuleOrThrow(), IMAGE_CATALOG_DIR, log, parseCatalogRepo(), RemoteCatalogSource, sortCatalogEntries() (+2 more)
+### Community 187 - "imports.ts"
+Cohesion: 0.05
+Nodes (35): BundledCatalogSource, CatalogManifest, CatalogSource, findModuleOrThrow(), IMAGE_CATALOG_DIR, log, parseCatalogRepo(), RemoteCatalogSource (+27 more)
 
 ### Community 188 - "Nt4AutoChooserBridge"
-Cohesion: 0.15
-Nodes (5): decodeMsgPack(), encodeMsgPack(), Nt4AutoChooserBridge, Nt4AutoChooserUnavailableError, upstreamUrlFor()
+Cohesion: 0.16
+Nodes (3): decodeMsgPack(), Nt4AutoChooserBridge, Nt4AutoChooserUnavailableError
 
 ### Community 189 - "gamepad.test.ts"
 Cohesion: 0.25
 Nodes (4): GamepadLease, FakeWebSocket, setupBridgeAndSocket(), WORKSPACE_ID
+
+### Community 190 - "deploy.yml GitHub Actions workflow"
+Cohesion: 0.33
+Nodes (6): deploy-cloudflare job in deploy.yml, deploy.yml GitHub Actions workflow, GCE docker compose stack (control/caddy/alloy), PATHPLANNER_DIST_TAG pin, coderunner rebuild-workspaces CLI, release.yml GitHub Actions workflow
 
 ### Community 191 - "Main (2)"
 Cohesion: 0.20
 Nodes (5): Decision 028: Demo mode for zero-config local tryout, Decision 033: Workspace Disk Read Limit, Decision 034: Demo mode portability on Docker Desktop, 2026-07-07 disk-thrash production incident, self-inspect.ts (zero-config containerized mode)
 
 ### Community 192 - "AllianceToggle.tsx"
-Cohesion: 0.27
+Cohesion: 0.28
 Nodes (8): AllianceToggle(), AllianceToggleProps, Side, SIDE_ACTIVE, SIDE_EDGE, SIDE_STATION, sideOf(), AllianceStation
 
 ### Community 193 - "write_files"
 Cohesion: 0.29
 Nodes (6): runcmd, write_files, content, owner, path, permissions
 
+### Community 194 - "047 — Cut proxied polling: push sim status over the run socket"
+Cohesion: 0.40
+Nodes (4): 047 — Cut proxied polling: push sim status over the run socket, Consequences, Context, Rejected
+
 ### Community 195 - "fake-nt4.ts"
 Cohesion: 0.09
-Nodes (18): CLI Reference Doc, Decision 036: VSCodium Web Migration, Decision 037: Gradle Wrapper Alias and Extension Pins, Decision 038: Java Tooling Compatibility and Smoke, bun run e2e (Playwright Mocked Tier), bun run e2e:security (Security E2E Tests), bun run e2e:workspace-java (Real Java Workspace Smoke), bun run test (Control-Plane Unit/Integration Tests) (+10 more)
+Nodes (18): AdvantageScope Lite NT4 client, Decision 036: VSCodium Web Migration, Decision 037: Gradle Wrapper Alias and Extension Pins, Decision 038: Java Tooling Compatibility and Smoke, bun run e2e (Playwright Mocked Tier), bun run e2e:security (Security E2E Tests), bun run e2e:workspace-java (Real Java Workspace Smoke), bun run test (Control-Plane Unit/Integration Tests) (+10 more)
 
-### Community 196 - "capacity.test.ts"
-Cohesion: 0.83
-Nodes (3): expireRunningStatusCache(), fakeContainerFor(), stopFakeContainer()
-
-### Community 197 - "Review Focus"
-Cohesion: 0.40
-Nodes (4): Global Constraints, Review Focus, Startup Gradle Cache Pruning Implementation Plan, Task 2: Prune module
+### Community 197 - "deps"
+Cohesion: 0.67
+Nodes (3): deps(), githubFetch(), ok()
 
 ### Community 198 - "ref_node_path"
-Cohesion: 0.10
-Nodes (10): GithubImportContext, workspaceBySlug(), loadRepoModule(), runningRuntime(), createRunSimFixture(), catalogRoot, repoRoot, repoRoot (+2 more)
+Cohesion: 0.08
+Nodes (9): log, RunJobState, SlugTakenError, UserDeletionContext, proxyOpts, createRunSimFixture(), repoRoot, targets (+1 more)
 
 ### Community 199 - "deploy"
 Cohesion: 0.40
@@ -1148,10 +1132,6 @@ Nodes (5): needs, permissions, runs-on, deploy, id-token
 ### Community 200 - "040 — SELinux container mounts"
 Cohesion: 0.40
 Nodes (4): 040 — SELinux container mounts, Consequences, Context, Decision
-
-### Community 203 - "login"
-Cohesion: 0.12
-Nodes (12): WorkspaceRouteContext, ensureWorkspaceForUser (slug collision suffixing), login(), randomToken(), signToken(), admin allowlist CRUD, emailArb, NUM_RUNS (+4 more)
 
 ### Community 204 - "verify"
 Cohesion: 0.50
@@ -1166,12 +1146,12 @@ Cohesion: 0.22
 Nodes (8): Alternatives considered, Auth, Cardinality discipline, Consequences, Context, Decision, Decision 023: Metrics and observability via Prometheus + Grafana Cloud, Status
 
 ### Community 207 - "app/types.ts"
-Cohesion: 0.07
-Nodes (30): sendUpstreamWebSocketMessage(), GamepadSocketData, HalSimSocketData, HttpFetch, ImportSocketData, LessonLoadSocketData, Nt4SocketData, PROXY_PENDING_LIMIT (+22 more)
+Cohesion: 0.06
+Nodes (32): sendUpstreamWebSocketMessage(), GamepadSocketData, HalSimSocketData, HttpFetch, ImportSocketData, LessonLoadSocketData, Nt4SocketData, PROXY_PENDING_LIMIT (+24 more)
 
 ### Community 208 - "Setup"
-Cohesion: 0.24
-Nodes (9): run_jobs table (V1 core schema), sessions table (V1 core schema), users table (V1 core schema), workspaces table (V1 core schema), container_leases.halsim_port column, container_leases_new table (Better Auth rebuild), run_jobs_new table (Better Auth rebuild), workspaces_new table (Better Auth rebuild) (+1 more)
+Cohesion: 0.22
+Nodes (10): run_jobs table (V1 core schema), sessions table (V1 core schema), users table (V1 core schema), workspaces table (V1 core schema), container_leases.halsim_port column, container_leases_new table (Better Auth rebuild), run_jobs_new table (Better Auth rebuild), workspaces_new table (Better Auth rebuild) (+2 more)
 
 ### Community 209 - "Decision 022: Skip Docker Smoke and Import Tests"
 Cohesion: 0.29
@@ -1221,10 +1201,6 @@ Nodes (7): Broad Docker smoke tier — not implemented, Consequences, Context, D
 Cohesion: 0.25
 Nodes (7): 005 - Java LSP MVP integration, Context, Decisions, Local WPILib-aware JDT LS image, Package and Vite choices, Plain Monaco client with direct LSP requests, Verification
 
-### Community 227 - "Workspaces.tsx"
-Cohesion: 0.38
-Nodes (5): DiskUsage, fetchWorkspaceData(), formatBytes(), Workspaces(), WorkspaceStatus
-
 ### Community 235 - "Decision Logs README index"
 Cohesion: 0.18
 Nodes (6): Decision 032: Canonical Image Naming, 042 — Collapsible workspace panes, Decision, Validation, Archive 004: Backend wiring for save and run, Decision Logs README index
@@ -1266,36 +1242,44 @@ Cohesion: 0.29
 Nodes (6): 033 — Workspace Disk Read Limit, Alternatives considered, Consequences, Context, Decision, Status
 
 ### Community 248 - "AppStorage"
-Cohesion: 0.14
-Nodes (8): allocatePortFromRange(), portIsFree(), AppStorage, AppStorage.normalizeWorkspaceProjectPaths, nowIso(), randomId(), AppStorage.seedBootstrapAdmins, ContainerRole
+Cohesion: 0.10
+Nodes (11): retirePreviousSession(), AppStorage, ensureWorkspaceFiles(), ensureWorkspaceForUser (slug collision suffixing), AppStorage.normalizeWorkspaceProjectPaths, nowIso(), projectPathFor(), randomId() (+3 more)
 
 ### Community 249 - "Sonner"
-Cohesion: 0.25
-Nodes (7): demo mode test suite, DEMO_SLUG (auth/demo), DEMO_USER_ID (auth/demo), AdvantageScope (bundled, modified), CodeRunner (project), VSCodium (bundled), WPILib (bundled)
+Cohesion: 0.29
+Nodes (6): demo mode test suite, DEMO_SLUG (auth/demo), AdvantageScope (bundled, modified), CodeRunner (project), VSCodium (bundled), WPILib (bundled)
 
 ### Community 250 - "loginAs"
-Cohesion: 0.22
-Nodes (6): loginAs(), randomToken(), signToken(), e2e/fixtures/auth.ts (loginAs helper), LoginPage (page object), signToken() (HMAC session signing)
+Cohesion: 0.12
+Nodes (16): Task 5: Mocked E2E — menu sends the right request, loginAs(), LoginOpts, LoginResult, randomToken(), signToken(), e2e/fixtures/auth.ts (loginAs helper), seedWorkspaceProject() (+8 more)
 
 ### Community 254 - "WorkspacePage.tsx"
-Cohesion: 0.06
-Nodes (44): DemoBanner(), VisualizerProps, EditorPane(), EditorPaneProps, PathPlannerPane, ScopePane, EditorReachability, EditorStatus (+36 more)
+Cohesion: 0.09
+Nodes (25): VisualizerProps, GamepadFrame, listConnectedGamepads(), makeLabel(), FakePad, useGamepad(), UseGamepadResult, clamp() (+17 more)
 
 ### Community 255 - "pathplanner-pane.spec.ts"
-Cohesion: 0.11
-Nodes (10): Task 5: Mocked E2E — menu sends the right request, AppFixtures, seedWorkspaceProject(), WorkspacePage, Deps, openWorkspace(), pathplannerLoads(), openWorkspace() test helper (+2 more)
-
-### Community 256 - "containers/code/Dockerfile"
-Cohesion: 0.40
-Nodes (5): Bundled lesson catalog (catalog/), containers/code/Dockerfile, codium-server (VSCodium reh-web), svc-vscodium-web/run service script, linuxserver/vscodium-web base image
+Cohesion: 0.12
+Nodes (7): AppFixtures, WorkspacePage, Deps, openWorkspace(), pathplannerLoads(), openWorkspace() test helper, pathplannerLoads() helper
 
 ### Community 257 - "Quick Start (Installation)"
-Cohesion: 0.50
-Nodes (4): Deploy for a team, Prerequisites, Quick Start (Installation), Start CodeRunner
+Cohesion: 0.20
+Nodes (5): Troubleshooting Guide, Deploy for a team, Prerequisites, Quick Start (Installation), Start CodeRunner
+
+### Community 258 - "auth0.test.ts"
+Cohesion: 0.11
+Nodes (7): ControlApp, auth0Options, nextIdTokenClaims, seedProject(), write(), emailArb, NUM_RUNS
 
 ### Community 260 - "Verify Ascope"
 Cohesion: 0.33
 Nodes (7): PathPlanner Pane Overview Screenshot, Sign-In Page Screenshot, Switch Project Dialog Screenshot, Team Import Progress Screenshot, Using CodeRunner - Ready State Screenshot, Using CodeRunner - Start State Screenshot, Workspace Shell Three-Pane Layout Screenshot
+
+### Community 262 - "coderunner dispatching CLI"
+Cohesion: 0.40
+Nodes (5): CLI Reference Doc, coderunner dispatching CLI, entrypoint.sh script, usage(), AdminPage (page object)
+
+### Community 264 - "Decision 010: Gradle Project Cache Isolation for Sim and LSP"
+Cohesion: 0.50
+Nodes (3): Eclipse JDT LS, Decision 010: Gradle Project Cache Isolation for Sim and LSP, V1-10 three-user smoke test
 
 ### Community 266 - "Robot / Robot.java"
 Cohesion: 0.33
@@ -1378,8 +1362,8 @@ Cohesion: 0.11
 Nodes (26): ANSI, colorize(), configureLogging(), createJsonSink(), createSink(), defaultLogFormat(), formatAttrs(), formatAttrValue() (+18 more)
 
 ### Community 314 - "LocalDockerRuntimeProvider"
-Cohesion: 0.11
-Nodes (18): dockerPortBindError(), LocalDockerRuntimeProvider, configMountType(), containerAttachedToNetwork(), containerHasPublishedPorts(), isLoopbackHost(), publishedPortFor(), v2LabelsMatch() (+10 more)
+Cohesion: 0.15
+Nodes (7): statusFromLease(), LocalDockerRuntimeProvider, toHostPath(), CodeContainerStatus, DockerInspectContainer, containerStartDuration, WorkspaceRow
 
 ### Community 315 - "FakeWebSocket"
 Cohesion: 0.16
@@ -1394,12 +1378,12 @@ Cohesion: 0.25
 Nodes (8): Env, fetch(), isProxiedPath(), onRequest(), PagesFunctionContext, serviceUnavailable(), TOP_LEVEL_PROXIED, onRequest (Cloudflare Pages Function)
 
 ### Community 354 - "classroom-admin.test.ts"
-Cohesion: 0.13
-Nodes (16): ControlApp, adminCookie(), ClassroomView, joinGuest(), GuestUser, joinedGuest(), startClassroom(), allCookiesFrom() (+8 more)
+Cohesion: 0.18
+Nodes (11): adminCookie(), ClassroomView, joinGuest(), GuestUser, joinedGuest(), startClassroom(), allCookiesFrom(), classroomJoinRequest() (+3 more)
 
 ### Community 358 - "local-docker-runtime-provider.ts"
-Cohesion: 0.26
-Nodes (18): inspectContainer(), inspectContainerOrThrow(), inspectContainers(), isContainerRunning(), runDocker(), cleanupStoppedContainers(), countRunningContainers(), log (+10 more)
+Cohesion: 0.19
+Nodes (22): dockerError(), dockerPortBindError(), inspectContainer(), inspectContainerOrThrow(), inspectContainers(), isContainerRunning(), runDocker(), cleanupStoppedContainers() (+14 more)
 
 ### Community 359 - "self-inspect.ts"
 Cohesion: 0.11
@@ -1407,25 +1391,25 @@ Nodes (22): DEFAULT_NETWORKS, deriveComposeProject(), deriveComposeWorkingDir(),
 
 ### Community 367 - "SimControlsBlock.tsx"
 Cohesion: 0.09
-Nodes (38): @testing-library/user-event@^14.6.1, isSimRunMode(), readStoredMode(), RUN_MODES, SimButton(), SimButtonProps, SimControlsBlock(), TONE_CLASSES (+30 more)
+Nodes (37): isSimRunMode(), readStoredMode(), RUN_MODES, SimButton(), SimButtonProps, SimControlsBlock(), TONE_CLASSES, LayoutMenu() (+29 more)
 
 ### Community 392 - "IDELayout.tsx"
 Cohesion: 0.09
 Nodes (17): IDELayout(), IDELayoutProps, PaneButton(), FakeResizeObserver, useSplit(), read(), ResizableHandle(), ResizablePanel() (+9 more)
 
 ### Community 409 - "preview-project.ts"
-Cohesion: 0.07
-Nodes (13): PreviewProjectOptions, RED_PIXEL_PNG, reportClassHtml(), reportCss(), reportIndexHtml(), reportJs(), seedPreviewProject(), write() (+5 more)
+Cohesion: 0.09
+Nodes (12): PreviewProjectOptions, RED_PIXEL_PNG, reportClassHtml(), reportCss(), reportIndexHtml(), reportJs(), seedPreviewProject(), write() (+4 more)
 
 ## Ambiguous Edges - Review These
-- `rebuildWorkspaces()` → `Grafana ops dashboard screenshot: host VM, workspaces, runs, control-plane panels`  [AMBIGUOUS]
-  website/static/img/screenshots/grafana-ops-dashboard.png · relation: conceptually_related_to
+- `codeStatusFromRun()` → `DriverStation.handleKeyDownCapture`  [AMBIGUOUS]
+  apps/web/src/components/DriverStation/DriverStation.tsx · relation: semantically_similar_to
 - `jsonResponse()` → `requireAdmin()`  [AMBIGUOUS]
   apps/control/src/auth/middleware.ts · relation: shares_data_with
 - `reloadAllowlist()` → `loadAllowlist (auth/allowlist)`  [AMBIGUOUS]
   apps/control/src/auth/allowlist.ts · relation: calls
-- `codeStatusFromRun()` → `DriverStation.handleKeyDownCapture`  [AMBIGUOUS]
-  apps/web/src/components/DriverStation/DriverStation.tsx · relation: semantically_similar_to
+- `rebuildWorkspaces()` → `Grafana ops dashboard screenshot: host VM, workspaces, runs, control-plane panels`  [AMBIGUOUS]
+  website/static/img/screenshots/grafana-ops-dashboard.png · relation: conceptually_related_to
 - `typecheck.ts` → `restore.ts main()`  [AMBIGUOUS]
   scripts/typecheck.ts · relation: conceptually_related_to
 - `logLine` → `startRun`  [AMBIGUOUS]
@@ -1436,28 +1420,28 @@ Nodes (13): PreviewProjectOptions, RED_PIXEL_PNG, reportClassHtml(), reportCss()
   docs/decisions/README.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **219 isolated node(s):** `stop-sim.sh sim process stopper`, `Decision 025 (two-phase sim runner)`, `Decision 037 (Gradle daemon settings vs java.import.gradle.*)`, `Decision 031 (containerized control plane)`, `RFC-1918` (+214 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2186 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **66 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **219 isolated node(s):** `Decision 031 (containerized control plane)`, `stop-sim.sh sim process stopper`, `Decision 025 (two-phase sim runner)`, `Decision 037 (Gradle daemon settings vs java.import.gradle.*)`, `RFC-1918` (+214 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2188 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `vitest` to `AllianceToggle.tsx`, `devDependencies`, `RefPicker.tsx`, `useProjectSwap.ts`, `useSession`, `vite.config.ts`, `IDELayout.tsx`, `useSimulationState`, `PreviewPane.tsx`, `SimControlsBlock.tsx`, `ServerUpdate.tsx`, `Button`, `contracts.ts`, `SimPaneSwitcher.tsx`, `web/package.json`, `SwitchProjectDialog.tsx`, `WorkspacePage.tsx`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
+- **Why does `Workspace Image development guide` connect `Workspace Image development guide` to `rebuild-workspaces.ts`, `Decision 036: Editor migration openvscode-server to VSCodium reh-web`, `Audit/Reconciliation Test Suite`, `image.ts`, `Decision 046: Recycle stale workspace containers`?**
+  _High betweenness centrality (0.047) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `LocalDockerRuntimeProvider` (e.g. with `IdleManager` and `applyMigrations()`) actually correct?**
   _`LocalDockerRuntimeProvider` has 3 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `stop-sim.sh sim process stopper`, `Decision 025 (two-phase sim runner)`, `Decision 037 (Gradle daemon settings vs java.import.gradle.*)` to the rest of the system?**
+- **What connects `Decision 031 (containerized control plane)`, `stop-sim.sh sim process stopper`, `Decision 025 (two-phase sim runner)` to the rest of the system?**
   _219 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `classrooms.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05201292976785189 - nodes in this community are weakly interconnected._
-- **Why does `containers/code/Dockerfile` connect `containers/code/Dockerfile` to `image.ts`, `code-container-defaults.test.ts`, `Workspace Image development guide`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+  _Cohesion score 0.07320024198427103 - nodes in this community are weakly interconnected._
+- **Why does `Seasonal Teardown` connect `Seasonal Teardown` to `Security Model doc`?**
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
 
-- **What is the exact relationship between `rebuildWorkspaces()` and `Grafana ops dashboard screenshot: host VM, workspaces, runs, control-plane panels`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **What is the exact relationship between `codeStatusFromRun()` and `DriverStation.handleKeyDownCapture`?**
+  _Edge tagged AMBIGUOUS (relation: semantically_similar_to) - confidence is low._
 - **What is the exact relationship between `jsonResponse()` and `requireAdmin()`?**
   _Edge tagged AMBIGUOUS (relation: shares_data_with) - confidence is low._

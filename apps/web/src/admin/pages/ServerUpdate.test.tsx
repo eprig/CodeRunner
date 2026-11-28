@@ -5,7 +5,7 @@ import type {
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ServerUpdate } from "./ServerUpdate";
+import { estimateProgress, ServerUpdate } from "./ServerUpdate";
 
 const status: ServerUpdateStatusResponse = {
 	ok: true,
@@ -373,6 +373,15 @@ describe("ServerUpdate", () => {
 					requestedBy: "admin@example.com",
 					startedAt: new Date(Date.now() - 65_000).toISOString(),
 					message: "#9 [stage-1 6/9] RUN bun install 34.8s",
+					steps: [
+						{ label: "Prepare checkout", state: "done", detail: null },
+						{ label: "Build or pull images", state: "running", detail: null },
+						{
+							label: "Recreate Compose services",
+							state: "pending",
+							detail: null,
+						},
+					],
 					log: [
 						{
 							at: "2026-11-27T04:00:00.000Z",
@@ -388,9 +397,21 @@ describe("ServerUpdate", () => {
 		const active = await screen.findByTestId("update-active-status");
 		expect(active).toHaveTextContent("Updating to release v2.5.0");
 		expect(active).toHaveTextContent("abc123def456");
-		expect(active).toHaveTextContent(/1m/u);
 		expect(active).toHaveTextContent("started by admin@example.com");
 		expect(active.querySelector("svg")).toHaveClass("animate-spin");
+		// One overall bar instead of the raw build step, with the timer to its left.
+		const bar = screen.getByRole("progressbar", { name: "Update progress" });
+		expect(Number(bar.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+		expect(active).not.toHaveTextContent("RUN bun install");
+		expect(bar).toHaveAttribute(
+			"title",
+			"#9 [stage-1 6/9] RUN bun install 34.8s",
+		);
+		const timer = screen.getByTestId("update-elapsed");
+		expect(timer).toHaveTextContent(/1m/u);
+		expect(
+			timer.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
 		expect(screen.getByTestId("update-submit")).toBeDisabled();
 		expect(screen.getByTestId("update-command-log")).toHaveTextContent(
 			"$ git fetch --prune --tags --force origin",
@@ -449,14 +470,42 @@ describe("ServerUpdate", () => {
 			}),
 		});
 		render(<ServerUpdate />);
+		// A failed attempt at another branch names it; the result, age,
+		// duration, and admin follow.
 		expect(await screen.findByTestId("update-last")).toHaveTextContent(
-			/Failed · dev by admin@example\.com, .* \(took 1m 32s\)/u,
+			/^Failed, rolled back · branch dev · .+ · 1m 32s · admin@example\.com$/u,
 		);
 		expect(screen.getByTestId("update-failed")).toHaveTextContent(
 			"The new control container did not become healthy. Rolled back to v2.4.0.",
 		);
 		// Said once, inside the card; no second "Last update" banner.
 		expect(screen.getAllByText(/Last update/u)).toHaveLength(1);
+		expect(screen.queryByText("Server checkout")).toBeNull();
+	});
+
+	test("doesn't repeat the version when the last update succeeded", async () => {
+		mockFetch({
+			status: () => ({
+				...status,
+				job: {
+					...status.job,
+					id: "job1",
+					state: "succeeded" as const,
+					kind: "tag" as const,
+					ref: "v2.4.0",
+					requestedBy: "admin@example.com",
+					startedAt: "2026-11-26T12:00:00.000Z",
+					finishedAt: "2026-11-26T12:00:45.000Z",
+					message: "Now running release v2.4.0.",
+				},
+			}),
+		});
+		render(<ServerUpdate />);
+		const last = await screen.findByTestId("update-last");
+		expect(last).toHaveTextContent(
+			/^Succeeded · .+ · 45s · admin@example\.com$/u,
+		);
+		expect(last).not.toHaveTextContent("v2.4.0");
 	});
 
 	describe("names a build tagged latest by its branch", () => {
@@ -609,5 +658,69 @@ describe("ServerUpdate", () => {
 		expect(screen.queryByTestId("update-compare")).toBeNull();
 		expect(screen.queryByText(/Same code/u)).toBeNull();
 		expect(screen.queryByTestId("update-ref-details")).toBeNull();
+	});
+
+	describe("overall update progress", () => {
+		const step = (state: "pending" | "running" | "done") => ({
+			label: "",
+			state,
+			detail: null,
+		});
+		const job = (
+			overrides: Partial<Parameters<typeof estimateProgress>[0]>,
+		) => ({
+			state: "running" as const,
+			kind: "branch" as const,
+			steps: [step("done"), step("running"), step("pending")],
+			message: null,
+			log: [],
+			...overrides,
+		});
+
+		test("grows through a branch build's two image builds", () => {
+			const early = estimateProgress(
+				job({ message: "[ascope-build 2/10] RUN apt-get" }),
+			);
+			const late = estimateProgress(
+				job({ message: "[stage-5 9/10] COPY dist" }),
+			);
+			const workspace = estimateProgress(
+				job({
+					message: "[stage-2 3/12] RUN gradle",
+					log: [
+						{
+							at: "",
+							kind: "command",
+							text: "$ bun run docker:build:workspace",
+						},
+					],
+				}),
+			);
+			expect(early).toBeLessThan(late);
+			expect(late).toBeLessThan(workspace);
+			expect(workspace).toBeLessThan(0.9);
+		});
+
+		test("weights a release toward downloading and restarting", () => {
+			const pulling = estimateProgress(job({ kind: "tag" }));
+			const restarting = estimateProgress(
+				job({
+					kind: "tag",
+					steps: [step("done"), step("done"), step("running")],
+					message: "Waiting for control to become healthy (running/starting)",
+				}),
+			);
+			expect(pulling).toBeCloseTo(0.1 + 0.5 * 0.15);
+			expect(restarting).toBeCloseTo(0.6 + 0.4 * 0.6);
+		});
+
+		test("never shows 0 or 100% while running", () => {
+			expect(estimateProgress(job({ state: "starting" }))).toBe(0.02);
+			expect(
+				estimateProgress(
+					job({ steps: [step("done"), step("done"), step("done")] }),
+				),
+			).toBe(0.99);
+		});
 	});
 });
