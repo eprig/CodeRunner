@@ -809,6 +809,15 @@ export const serverUpdateStepSchema = z.object({
 	detail: z.string().nullable().optional(),
 });
 
+export const serverUpdateCommitSchema = z.object({
+	sha: z.string(),
+	/** First line of the commit message. */
+	title: z.string(),
+	author: z.string().nullable(),
+	date: z.string().nullable(),
+	url: z.string().nullable(),
+});
+
 export const serverUpdateRepoSchema = z.object({
 	/** `org.opencontainers.image.source` from the running image. */
 	url: z.string().nullable(),
@@ -828,6 +837,13 @@ export const serverUpdateRepoSchema = z.object({
 	 * control image without the updater helper. The tab stays read-only then.
 	 */
 	updatable: z.boolean(),
+	/**
+	 * Legacy deployments pin `CODERUNNER_TAG` in `.env`. The updater keeps that
+	 * line current; new deployments take the version from the checkout instead.
+	 */
+	versionPinnedInEnv: z.boolean(),
+	/** The running commit's title/date from GitHub, when it could be looked up. */
+	commitInfo: serverUpdateCommitSchema.nullable(),
 });
 
 export const serverUpdateLogEntrySchema = z.object({
@@ -858,12 +874,49 @@ export const serverUpdateStatusResponseSchema = z.object({
 		startedAt: z.string().nullable(),
 		finishedAt: z.string().nullable(),
 		message: z.string().nullable(),
+		/** Email of the admin who started the update. */
+		requestedBy: z.string().nullable(),
 		steps: z.array(serverUpdateStepSchema),
 		/** Tail of the helper's command/output log, oldest first. */
 		log: z.array(serverUpdateLogEntrySchema),
 	}),
 	/** True while the control container is expected to restart mid-update. */
 	restartExpected: z.boolean(),
+	/** Who an update would interrupt right now. */
+	activity: z.object({
+		activeWorkspaces: z.number().int().nonnegative(),
+		activeBuilds: z.number().int().nonnegative(),
+	}),
+});
+
+/** Details for one selectable ref, fetched when the admin picks it. */
+export const serverUpdateRefDetailsSchema = z.object({
+	ok: z.literal(true),
+	kind: serverUpdateKindSchema,
+	ref: z.string(),
+	commit: serverUpdateCommitSchema.nullable(),
+	release: z
+		.object({
+			name: z.string(),
+			/** Release notes as written on GitHub (Markdown source). */
+			notes: z.string(),
+			publishedAt: z.string().nullable(),
+			prerelease: z.boolean(),
+			url: z.string(),
+		})
+		.nullable(),
+	/** How the selected ref relates to the running commit. */
+	compare: z
+		.object({
+			status: z.enum(["ahead", "behind", "identical", "diverged"]),
+			aheadBy: z.number().int().nonnegative(),
+			behindBy: z.number().int().nonnegative(),
+			/** Newest first; capped, see `aheadBy` for the full count. */
+			commits: z.array(serverUpdateCommitSchema),
+			url: z.string().nullable(),
+		})
+		.nullable(),
+	error: z.string().nullable(),
 });
 
 export const serverUpdateAcceptedSchema = z.object({
@@ -885,3 +938,7 @@ export type ServerUpdateStatusResponse = z.infer<
 	typeof serverUpdateStatusResponseSchema
 >;
 export type ServerUpdateAccepted = z.infer<typeof serverUpdateAcceptedSchema>;
+export type ServerUpdateCommit = z.infer<typeof serverUpdateCommitSchema>;
+export type ServerUpdateRefDetails = z.infer<
+	typeof serverUpdateRefDetailsSchema
+>;

@@ -245,6 +245,19 @@ export async function createApp(
 		config: storage.config,
 		dockerRunner: dockerRunner ?? defaultDockerRunner,
 		fetch: serverUpdateFetch,
+		// Running workspace containers with recent activity: the students an
+		// update would interrupt. Mirrors the admin dashboard's idle cutoff.
+		activity: () => {
+			const cutoff = Date.now() - storage.config.idleStopMinutes * 60_000;
+			const activeWorkspaces = storage
+				.listAllWorkspacesWithLeases()
+				.filter(
+					(entry) =>
+						entry.lease?.code_state === "running" &&
+						Date.parse(entry.workspace.last_accessed_at) >= cutoff,
+				).length;
+			return { activeWorkspaces, activeBuilds: runs.activeBuildCount() };
+		},
 		// Compose sets the container hostname to its short ID, so this names
 		// the running control container for `docker inspect` and the updater.
 		selfContainerId:

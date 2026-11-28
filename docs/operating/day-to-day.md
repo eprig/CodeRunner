@@ -196,14 +196,18 @@ cap and active container count with an inline editor.
 
 ## Server updates
 
-**Admin → Update** shows the running image's repository, commit, version, and
-host checkout path, plus the available release tags and branches. Selecting a
-tag pulls the prebuilt images; selecting a branch builds both images from that
-branch in the host checkout. Either choice recreates student workspace
-containers and the control container, so schedule it when no class is active.
+**Admin → Update** shows what is running, whether a newer release exists, and,
+for any release or branch you pick from its searchable list, the release notes
+and the commits it would add or remove. It also shows how many students are
+active right now and who ran the last update. A release pulls prebuilt images;
+a branch is built on the server. The update recreates the control container,
+and each student's workspace container is recreated on the new image the next
+time it reconnects, so schedule updates when no class is active. If the new
+control container fails its healthcheck, the previous version is restored
+automatically and the tab shows why.
 
-The tab is read-only when no host checkout can be found. In that case set
-`CODERUNNER_UPDATE_REPO_DIR` in `.env` and recreate the control container; see
+Outside the browser, update with git from the checkout: `git fetch --tags &&
+git checkout <tag> && docker compose pull && docker compose up -d`; see
 [Local Deployment](../deploying/local.md#updating-coderunner-to-a-new-release).
 Update requests are recorded in the audit log as `server.update`.
 

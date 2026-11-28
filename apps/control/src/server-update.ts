@@ -3,9 +3,11 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
 	ServerUpdateAccepted,
+	ServerUpdateCommit,
 	ServerUpdateJobState,
 	ServerUpdateKind,
 	ServerUpdateLogEntry,
+	ServerUpdateRefDetails,
 	ServerUpdateRequest,
 	ServerUpdateStatusResponse,
 	ServerUpdateStep,
@@ -21,13 +23,33 @@ const log = getLogger("updates");
 /** Job state lives in the bind-mounted data dir so the *new* control container
  * can report the outcome of an update that swapped its predecessor. */
 export const UPDATE_JOB_FILE = "server-update.json";
-const REFS_CACHE_MS = 60_000;
+/**
+ * Anonymous GitHub API calls are limited to 60/hour per IP and the page polls,
+ * so ref lists are cached for 5 minutes (an admin can force a refresh), and
+ * failures for 30 seconds so a rate-limited page doesn't keep hammering.
+ */
+const REFS_CACHE_MS = 5 * 60_000;
+const ERROR_CACHE_MS = 30_000;
+const DETAILS_CACHE_MS = 10 * 60_000;
+const MIN_FORCED_REFRESH_MS = 15_000;
+const MAX_COMPARE_COMMITS = 30;
+const MAX_NOTES_CHARS = 20_000;
 const MAX_REFS = 200;
+/** A just-written job may not have its helper container yet; don't call it lost. */
+const HELPER_STARTUP_GRACE_MS = 30_000;
+export const UPDATER_NAME_PREFIX = "coderunner-updater-";
+
+export type ServerUpdateActivity = {
+	activeWorkspaces: number;
+	activeBuilds: number;
+};
 
 export type ServerUpdateDeps = {
 	config: ControlConfig;
 	dockerRunner: DockerRunner;
 	selfContainerId: string;
+	/** Who an update would interrupt; omitted in unit tests. */
+	activity?: (() => ServerUpdateActivity) | undefined;
 	fetch?: ((url: string, init?: RequestInit) => Promise<Response>) | undefined;
 	now?: (() => Date) | undefined;
 };
@@ -41,6 +63,7 @@ type JobFile = {
 	startedAt: string | null;
 	finishedAt: string | null;
 	message: string | null;
+	requestedBy: string | null;
 	steps: ServerUpdateStep[];
 	log: ServerUpdateLogEntry[];
 	image: string | null;
@@ -51,6 +74,7 @@ type ImageInfo = {
 	url: string | null;
 	commit: string | null;
 	version: string | null;
+	/** Container labels (OCI provenance from the image, plus Compose's own). */
 	labels: Record<string, string>;
 	/** Local git/.env metadata is for display only; only container metadata can drive an update. */
 	fromLocalCheckout: boolean;
@@ -64,8 +88,10 @@ type RefsResult = {
 	error: string | null;
 };
 
-type RefsCache = { at: number; result: RefsResult };
-let refsCache: RefsCache | null = null;
+type Cached<T> = { at: number; ttl: number; value: T };
+const refsCache = new Map<string, Cached<RefsResult>>();
+const githubCache = new Map<string, Cached<unknown>>();
+let lastForcedRefresh = 0;
 
 const STEPS: Array<{ label: string; detail: string }> = [
 	{ label: "Prepare checkout", detail: "Fetch the selected ref on the host" },
@@ -88,6 +114,7 @@ const EMPTY_JOB: JobFile = {
 	startedAt: null,
 	finishedAt: null,
 	message: null,
+	requestedBy: null,
 	steps: [],
 	log: [],
 	image: null,
@@ -109,6 +136,14 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 		source: "local",
 		hostDir: "/demo/coderunner",
 		updatable: false,
+		versionPinnedInEnv: false,
+		commitInfo: {
+			sha: "demo0000000000000000000000000000000000000",
+			title: "Demo build",
+			author: "CodeRunner",
+			date: "2026-11-20T00:00:00.000Z",
+			url: null,
+		},
 	},
 	refs: {
 		tags: ["v2.5.0", "v2.4.0", "v2.3.0"],
@@ -128,6 +163,7 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 		startedAt: null,
 		finishedAt: null,
 		message: null,
+		requestedBy: null,
 		steps: initialSteps(),
 		log: [
 			{
@@ -138,6 +174,7 @@ const DEMO_STATUS: ServerUpdateStatusResponse = {
 		],
 	},
 	restartExpected: false,
+	activity: { activeWorkspaces: 0, activeBuilds: 0 },
 };
 
 function jobPath(config: ControlConfig): string {
@@ -170,6 +207,8 @@ async function readJob(config: ControlConfig): Promise<JobFile> {
 			finishedAt:
 				typeof parsed.finishedAt === "string" ? parsed.finishedAt : null,
 			message: typeof parsed.message === "string" ? parsed.message : null,
+			requestedBy:
+				typeof parsed.requestedBy === "string" ? parsed.requestedBy : null,
 			steps: Array.isArray(parsed.steps) ? normalizeSteps(parsed.steps) : [],
 			log: Array.isArray(parsed.log) ? normalizeLog(parsed.log) : [],
 			image: typeof parsed.image === "string" ? parsed.image : null,
@@ -334,9 +373,124 @@ export function githubSlug(url: string | null): string | null {
 	return null;
 }
 
+type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>;
+
+class GitHubError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+	}
+}
+
+function githubHeaders(): Record<string, string> {
+	const token = Bun.env.GITHUB_TOKEN?.trim() || Bun.env.GH_TOKEN?.trim() || "";
+	const headers: Record<string, string> = {
+		accept: "application/vnd.github+json",
+		"x-github-api-version": "2022-11-28",
+		"user-agent": "coderunner-admin-updater",
+	};
+	if (token) headers.authorization = `Bearer ${token}`;
+	return headers;
+}
+
+/** GET a GitHub API path, translating rate limits into an actionable message. */
+async function githubJson<T>(fetchImpl: FetchImpl, path: string): Promise<T> {
+	const response = await fetchImpl(`https://api.github.com${path}`, {
+		headers: githubHeaders(),
+	});
+	if (!response.ok) {
+		const limited =
+			(response.status === 403 || response.status === 429) &&
+			response.headers?.get?.("x-ratelimit-remaining") === "0";
+		if (limited) {
+			const reset = Number(response.headers.get("x-ratelimit-reset"));
+			const when = Number.isFinite(reset)
+				? ` until ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
+				: "";
+			throw new GitHubError(
+				`GitHub's API rate limit is used up${when}. Set GITHUB_TOKEN in .env to raise it.`,
+				response.status,
+			);
+		}
+		throw new GitHubError(
+			`GitHub returned ${response.status}`,
+			response.status,
+		);
+	}
+	return (await response.json()) as T;
+}
+
+/** Cache GitHub reads; 404s are cached as null like any other answer. */
+async function cachedGithub<T>(
+	fetchImpl: FetchImpl,
+	path: string,
+	ttl: number,
+): Promise<T | null> {
+	const hit = githubCache.get(path);
+	if (hit && Date.now() - hit.at < hit.ttl) {
+		if (hit.value instanceof Error) throw hit.value;
+		return hit.value as T | null;
+	}
+	try {
+		const value = await githubJson<T>(fetchImpl, path);
+		githubCache.set(path, { at: Date.now(), ttl, value });
+		return value;
+	} catch (error) {
+		if (error instanceof GitHubError && error.status === 404) {
+			githubCache.set(path, { at: Date.now(), ttl, value: null });
+			return null;
+		}
+		githubCache.set(path, {
+			at: Date.now(),
+			ttl: ERROR_CACHE_MS,
+			value: error,
+		});
+		throw error;
+	}
+}
+
+type GithubCommit = {
+	sha?: string;
+	html_url?: string;
+	commit?: {
+		message?: string;
+		author?: { name?: string; date?: string };
+		committer?: { date?: string };
+	};
+	author?: { login?: string } | null;
+};
+
+function toCommit(raw: GithubCommit): ServerUpdateCommit | null {
+	if (!raw.sha) return null;
+	return {
+		sha: raw.sha,
+		title: (raw.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+		author: raw.author?.login ?? raw.commit?.author?.name ?? null,
+		date: raw.commit?.committer?.date ?? raw.commit?.author?.date ?? null,
+		url: raw.html_url ?? null,
+	};
+}
+
+async function commitInfo(
+	fetchImpl: FetchImpl,
+	slug: string,
+	sha: string,
+): Promise<ServerUpdateCommit | null> {
+	// A commit never changes, so its lookup can live as long as the process.
+	const raw = await cachedGithub<GithubCommit>(
+		fetchImpl,
+		`/repos/${slug}/commits/${encodeURIComponent(sha)}`,
+		24 * 60 * 60_000,
+	);
+	return raw ? toCommit(raw) : null;
+}
+
 export async function listRemoteRefs(
 	url: string | null,
-	fetchImpl: (input: string, init?: RequestInit) => Promise<Response>,
+	fetchImpl: FetchImpl,
+	options: { force?: boolean } = {},
 ): Promise<RefsResult> {
 	const slug = githubSlug(url);
 	if (!slug) {
@@ -351,38 +505,23 @@ export async function listRemoteRefs(
 	}
 
 	const now = Date.now();
-	if (refsCache && now - refsCache.at < REFS_CACHE_MS) return refsCache.result;
-
-	const token = Bun.env.GITHUB_TOKEN?.trim() || Bun.env.GH_TOKEN?.trim() || "";
-	const headers: Record<string, string> = {
-		accept: "application/vnd.github+json",
-		"x-github-api-version": "2022-11-28",
-		"user-agent": "coderunner-admin-updater",
-	};
-	if (token) headers.authorization = `Bearer ${token}`;
+	const cached = refsCache.get(slug);
+	const forced =
+		options.force === true && now - lastForcedRefresh >= MIN_FORCED_REFRESH_MS;
+	if (cached && !forced && now - cached.at < cached.ttl) return cached.value;
+	if (forced) lastForcedRefresh = now;
 
 	try {
-		const [tagsResponse, branchesResponse] = await Promise.all([
-			fetchImpl(`https://api.github.com/repos/${slug}/tags?per_page=100`, {
-				headers,
-			}),
-			fetchImpl(`https://api.github.com/repos/${slug}/branches?per_page=100`, {
-				headers,
-			}),
+		const [tags, branches] = await Promise.all([
+			githubJson<Array<{ name?: string; commit?: { sha?: string } }>>(
+				fetchImpl,
+				`/repos/${slug}/tags?per_page=100`,
+			),
+			githubJson<Array<{ name?: string; commit?: { sha?: string } }>>(
+				fetchImpl,
+				`/repos/${slug}/branches?per_page=100`,
+			),
 		]);
-		if (!tagsResponse.ok || !branchesResponse.ok) {
-			throw new Error(
-				`GitHub returned ${tagsResponse.status}/${branchesResponse.status}`,
-			);
-		}
-		const tags = (await tagsResponse.json()) as Array<{
-			name?: string;
-			commit?: { sha?: string };
-		}>;
-		const branches = (await branchesResponse.json()) as Array<{
-			name?: string;
-			commit?: { sha?: string };
-		}>;
 		const commits: Record<string, string> = {};
 		for (const tag of tags) {
 			if (tag.name && tag.commit?.sha)
@@ -394,10 +533,9 @@ export async function listRemoteRefs(
 			}
 		}
 		const result: RefsResult = {
-			tags: tags
-				.map((tag) => tag.name ?? "")
-				.filter(Boolean)
-				.slice(0, MAX_REFS),
+			tags: sortTagsNewestFirst(
+				tags.map((tag) => tag.name ?? "").filter(Boolean),
+			).slice(0, MAX_REFS),
 			branches: branches
 				.map((branch) => branch.name ?? "")
 				.filter(Boolean)
@@ -405,34 +543,83 @@ export async function listRemoteRefs(
 			commits,
 			error: null,
 		};
-		refsCache = { at: now, result };
+		refsCache.set(slug, { at: now, ttl: REFS_CACHE_MS, value: result });
 		return result;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		return {
-			tags: [],
-			branches: [],
-			commits: {},
+		const result: RefsResult = {
+			// Keep showing the last good list when a refresh fails.
+			tags: cached?.value.tags ?? [],
+			branches: cached?.value.branches ?? [],
+			commits: cached?.value.commits ?? {},
 			error: `Couldn't list refs from GitHub: ${message}`,
 		};
+		refsCache.set(slug, { at: now, ttl: ERROR_CACHE_MS, value: result });
+		return result;
 	}
+}
+
+/**
+ * GitHub's tags endpoint is not ordered by version, but the UI preselects the
+ * first tag as "newest". Release tags (vMAJOR.MINOR.PATCH[-pre]) sort by
+ * version, a prerelease below its release; anything else keeps API order after.
+ */
+export function sortTagsNewestFirst(tags: string[]): string[] {
+	const parse = (tag: string) => {
+		const match = /^v(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/u.exec(tag);
+		return match
+			? {
+					parts: [Number(match[1]), Number(match[2]), Number(match[3])],
+					pre: match[4] ?? null,
+				}
+			: null;
+	};
+	return tags
+		.map((tag, index) => ({ tag, index, version: parse(tag) }))
+		.sort((a, b) => {
+			if (!a.version || !b.version) {
+				if (a.version) return -1;
+				if (b.version) return 1;
+				return a.index - b.index;
+			}
+			for (let i = 0; i < 3; i += 1) {
+				const diff = b.version.parts[i]! - a.version.parts[i]!;
+				if (diff !== 0) return diff;
+			}
+			if (a.version.pre === b.version.pre) return 0;
+			if (a.version.pre === null) return -1;
+			if (b.version.pre === null) return 1;
+			return b.version.pre.localeCompare(a.version.pre, "en", {
+				numeric: true,
+			});
+		})
+		.map((entry) => entry.tag);
 }
 
 /** Test hook: avoids a 60s wait between remote-ref changes in tests. */
 export function clearRefsCache(): void {
-	refsCache = null;
+	refsCache.clear();
+	githubCache.clear();
+	lastForcedRefresh = 0;
 }
 
 export async function getServerUpdateStatus(
 	deps: ServerUpdateDeps,
+	options: { refresh?: boolean } = {},
 ): Promise<ServerUpdateStatusResponse> {
 	if (deps.config.demo) return structuredClone(DEMO_STATUS);
 	const fetchImpl = deps.fetch ?? globalThis.fetch;
 	const [image, job] = await Promise.all([
 		readImageInfo(deps),
-		readJob(deps.config),
+		readJob(deps.config).then((current) => reconcileLostJob(deps, current)),
 	]);
-	const refs = await listRemoteRefs(image.url, fetchImpl);
+	const slug = githubSlug(image.url);
+	const [refs, runningCommit] = await Promise.all([
+		listRemoteRefs(image.url, fetchImpl, { force: options.refresh === true }),
+		slug && image.commit
+			? commitInfo(fetchImpl, slug, image.commit).catch(() => null)
+			: Promise.resolve(null),
+	]);
 	const ns = imageNamespace(image.image);
 	const version = image.version;
 	const mode =
@@ -458,6 +645,10 @@ export async function getServerUpdateStatus(
 			updatable: Boolean(
 				deps.config.hostRepoDir && image.image && !image.fromLocalCheckout,
 			),
+			// Compose passes .env into the control container (env_file), so a
+			// legacy CODERUNNER_TAG line shows up in this process's environment.
+			versionPinnedInEnv: Boolean(Bun.env.CODERUNNER_TAG?.trim()),
+			commitInfo: runningCommit,
 		},
 		refs,
 		job: {
@@ -469,11 +660,191 @@ export async function getServerUpdateStatus(
 			startedAt: job.startedAt,
 			finishedAt: job.finishedAt,
 			message: job.message,
+			requestedBy: job.requestedBy,
 			steps: job.steps.length > 0 ? job.steps : initialSteps(),
 			log: job.log,
 		},
 		restartExpected: job.state === "starting" || job.state === "running",
+		activity: deps.activity?.() ?? { activeWorkspaces: 0, activeBuilds: 0 },
 	};
+}
+
+/**
+ * What picking a ref would deploy: its commit, its GitHub release notes (for
+ * tags), and how it compares with the running commit. Fetched on selection,
+ * not on every poll, and cached, to stay inside GitHub's anonymous rate limit.
+ */
+export async function getRefDetails(
+	deps: ServerUpdateDeps,
+	input: unknown,
+): Promise<ServerUpdateRefDetails> {
+	const parsed = serverUpdateRequestSchema.safeParse(input);
+	if (!parsed.success) {
+		throw new ServerUpdateError("Choose a valid tag or branch.", 400);
+	}
+	const { kind, ref } = parsed.data;
+	const empty: ServerUpdateRefDetails = {
+		ok: true,
+		kind,
+		ref,
+		commit: null,
+		release: null,
+		compare: null,
+		error: null,
+	};
+	if (deps.config.demo) {
+		return {
+			...empty,
+			release:
+				kind === "tag"
+					? {
+							name: `CodeRunner ${ref}`,
+							notes: "Sample release notes shown in demo mode.",
+							publishedAt: "2026-11-20T00:00:00.000Z",
+							prerelease: false,
+							url: "https://github.com/eprig/CodeRunner/releases",
+						}
+					: null,
+		};
+	}
+	const fetchImpl = deps.fetch ?? globalThis.fetch;
+	const image = await readImageInfo(deps);
+	const slug = githubSlug(image.url);
+	if (!slug) {
+		return {
+			...empty,
+			error: "Details are available for GitHub repositories only.",
+		};
+	}
+	const refs = await listRemoteRefs(image.url, fetchImpl);
+	const target = refs.commits[`${kind}:${ref}`] ?? null;
+	try {
+		const [commit, release, compare] = await Promise.all([
+			target ? commitInfo(fetchImpl, slug, target) : Promise.resolve(null),
+			kind === "tag"
+				? cachedGithub<{
+						name?: string | null;
+						body?: string | null;
+						published_at?: string | null;
+						prerelease?: boolean;
+						html_url?: string;
+					}>(
+						fetchImpl,
+						`/repos/${slug}/releases/tags/${encodeURIComponent(ref)}`,
+						DETAILS_CACHE_MS,
+					)
+				: Promise.resolve(null),
+			image.commit && target
+				? cachedGithub<{
+						status?: string;
+						ahead_by?: number;
+						behind_by?: number;
+						html_url?: string;
+						commits?: GithubCommit[];
+					}>(
+						fetchImpl,
+						`/repos/${slug}/compare/${encodeURIComponent(image.commit)}...${encodeURIComponent(target)}`,
+						DETAILS_CACHE_MS,
+					)
+				: Promise.resolve(null),
+		]);
+		const status = compare?.status;
+		return {
+			...empty,
+			commit,
+			release: release
+				? {
+						name: release.name?.trim() || ref,
+						notes: (release.body ?? "").slice(0, MAX_NOTES_CHARS),
+						publishedAt: release.published_at ?? null,
+						prerelease: release.prerelease === true,
+						url:
+							release.html_url ??
+							`https://github.com/${slug}/releases/tag/${encodeURIComponent(ref)}`,
+					}
+				: null,
+			compare:
+				compare &&
+				(status === "ahead" ||
+					status === "behind" ||
+					status === "identical" ||
+					status === "diverged")
+					? {
+							status,
+							aheadBy: compare.ahead_by ?? 0,
+							behindBy: compare.behind_by ?? 0,
+							commits: (compare.commits ?? [])
+								.map(toCommit)
+								.filter((entry): entry is ServerUpdateCommit => entry !== null)
+								.reverse()
+								.slice(0, MAX_COMPARE_COMMITS),
+							url: compare.html_url ?? null,
+						}
+					: null,
+		};
+	} catch (error) {
+		return {
+			...empty,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+function isActive(job: JobFile): boolean {
+	return job.state === "starting" || job.state === "running";
+}
+
+/**
+ * The helper is `--rm` and writes a terminal state before it exits, so an
+ * active job whose helper container no longer exists was interrupted (host
+ * reboot, OOM kill, `docker kill`). Mark it failed so the tab doesn't stay
+ * locked behind an update that will never finish.
+ */
+async function reconcileLostJob(
+	deps: ServerUpdateDeps,
+	job: JobFile,
+): Promise<JobFile> {
+	if (!isActive(job) || !job.id) return job;
+	const now = (deps.now ?? (() => new Date()))();
+	const startedAt = job.startedAt ? Date.parse(job.startedAt) : Number.NaN;
+	if (
+		Number.isFinite(startedAt) &&
+		now.getTime() - startedAt < HELPER_STARTUP_GRACE_MS
+	) {
+		return job;
+	}
+	let helper: Awaited<ReturnType<typeof inspectContainer>>;
+	try {
+		helper = await inspectContainer(
+			deps.dockerRunner,
+			`${UPDATER_NAME_PREFIX}${job.id}`,
+		);
+	} catch {
+		return job; // Docker didn't answer; don't guess.
+	}
+	if (helper) return job;
+	const message =
+		"The update helper stopped without reporting a result (it may have been killed or the host restarted). Check the command log, then try again.";
+	const failed: JobFile = {
+		...job,
+		state: "failed",
+		finishedAt: now.toISOString(),
+		message,
+		steps: job.steps.map((step) =>
+			step.state === "running"
+				? { ...step, state: "failed", detail: message }
+				: step,
+		),
+		log: [...job.log, { at: now.toISOString(), kind: "error", text: message }],
+	};
+	try {
+		await writeJob(deps.config, failed);
+	} catch (error) {
+		log.warn("couldn't record lost update job", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+	return failed;
 }
 
 function initialSteps(): ServerUpdateStep[] {
@@ -493,6 +864,35 @@ export class ServerUpdateError extends Error {
 	}
 }
 
+/**
+ * Compose labels the running control container with the exact project name,
+ * config files (absolute host paths, comma-separated), and service name it
+ * was created from. Handing those to the helper makes its `docker compose`
+ * calls target the same stack however the operator started it (`-f` flags,
+ * COMPOSE_FILE, or `-p`); COMPOSE_FILE from the env is only a fallback.
+ */
+export function composeEnv(
+	labels: Record<string, string>,
+): Array<[string, string]> {
+	const pairs: Array<[string, string]> = [];
+	const project = labels["com.docker.compose.project"]?.trim();
+	if (project) pairs.push(["COMPOSE_PROJECT_NAME", project]);
+	const configFiles = labels["com.docker.compose.project.config_files"]
+		?.split(",")
+		.map((file) => file.trim())
+		.filter(Boolean);
+	const envComposeFile = Bun.env.COMPOSE_FILE?.trim();
+	if (configFiles && configFiles.length > 0) {
+		pairs.push(["COMPOSE_FILE", configFiles.join(",")]);
+		pairs.push(["COMPOSE_PATH_SEPARATOR", ","]);
+	} else if (envComposeFile) {
+		pairs.push(["COMPOSE_FILE", envComposeFile]);
+	}
+	const service = labels["com.docker.compose.service"]?.trim();
+	pairs.push(["CODERUNNER_UPDATE_SERVICE", service || "control"]);
+	return pairs;
+}
+
 function slugifyRef(ref: string): string {
 	return ref
 		.replace(/[^A-Za-z0-9._-]+/gu, "-")
@@ -503,6 +903,7 @@ function slugifyRef(ref: string): string {
 export async function startServerUpdate(
 	deps: ServerUpdateDeps,
 	input: unknown,
+	requestedBy: string | null = null,
 ): Promise<ServerUpdateAccepted> {
 	const parsed = serverUpdateRequestSchema.safeParse(input);
 	if (!parsed.success) {
@@ -529,6 +930,14 @@ export async function startServerUpdate(
 		throw new ServerUpdateError(
 			"No host checkout was detected. Set CODERUNNER_UPDATE_REPO_DIR to the directory containing docker-compose.yml, then recreate the control container.",
 			503,
+		);
+	}
+
+	const current = await reconcileLostJob(deps, await readJob(config));
+	if (isActive(current)) {
+		throw new ServerUpdateError(
+			`An update to ${current.kind ?? "ref"} ${current.ref ?? "unknown"} is already running. Wait for it to finish.`,
+			409,
 		);
 	}
 
@@ -560,8 +969,9 @@ export async function startServerUpdate(
 	const jobId = randomUUID().slice(0, 8);
 	const tag =
 		request.kind === "tag" ? request.ref : `branch-${slugifyRef(request.ref)}`;
+	// Display only: the helper resolves real image names from the checked-out
+	// compose files, which may use a different namespace than this image.
 	const controlImage = `${ns}/coderunner-control:${tag}`;
-	const workspaceImage = `${ns}/coderunner-workspace:${tag}`;
 	const hostRepoDir = config.hostRepoDir;
 	const hostDataDir = config.hostDataDir ?? config.dataDir;
 	const commit = refs.commits[`${request.kind}:${request.ref}`] ?? null;
@@ -577,6 +987,7 @@ export async function startServerUpdate(
 		message: shortCommit
 			? `Starting update to ${shortCommit}…`
 			: "Starting update…",
+		requestedBy,
 		steps: initialSteps(),
 		log: [
 			{
@@ -603,17 +1014,17 @@ export async function startServerUpdate(
 		["CODERUNNER_UPDATE_REF", request.ref],
 		["CODERUNNER_UPDATE_KIND", request.kind],
 		["CODERUNNER_UPDATE_JOB_FILE", hostJobPath(config)],
-		["CODERUNNER_UPDATE_IMAGE", controlImage],
-		["CODERUNNER_UPDATE_WORKSPACE_IMAGE", workspaceImage],
+		// The image tag the checked-out compose files are run with. A release
+		// commit pins this same value as its compose default.
 		["CODERUNNER_UPDATE_TAG", tag],
-		["CODERUNNER_IMAGE_NS", ns],
 		["CODERUNNER_UPDATE_COMMIT", commit ?? ""],
+		// What is running now, so the helper prunes exactly these afterwards and
+		// can tell a rollback what to return to.
+		["CODERUNNER_UPDATE_PREVIOUS_IMAGE", imageInfo.image],
+		["CODERUNNER_UPDATE_PREVIOUS_WORKSPACE_IMAGE", config.codeImage],
+		...composeEnv(imageInfo.labels),
 	];
-	// `docker compose up -d` in the helper must see the same COMPOSE_FILE the
-	// operator's deployment uses (prod adds Caddy/Alloy via a second file).
-	const composeFile = Bun.env.COMPOSE_FILE?.trim();
-	if (composeFile) envPairs.push(["COMPOSE_FILE", composeFile]);
-	const updaterName = `coderunner-updater-${jobId}`;
+	const updaterName = `${UPDATER_NAME_PREFIX}${jobId}`;
 	const args = [
 		"run",
 		"-d",
@@ -622,6 +1033,10 @@ export async function startServerUpdate(
 		updaterName,
 		"--user",
 		"root",
+		// Same SELinux exemption the Compose control service has (decision 040):
+		// the helper mounts the Docker socket and the host checkout.
+		"--security-opt",
+		"label=disable",
 		"-v",
 		"/var/run/docker.sock:/var/run/docker.sock",
 		"-v",

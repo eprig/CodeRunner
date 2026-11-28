@@ -28,6 +28,7 @@
 		"demo:docker": "CODERUNNER_DEMO_MODE=1 docker compose up",
 		"docker:build:workspace": "bun scripts/image.ts build workspace",
 		"docker:build:control": "bun scripts/image.ts build control",
+		"release:prepare": "bun scripts/release-prepare.ts",
 		"docker:pull:workspace": "bun scripts/image.ts pull workspace",
 		"docker:cleanup": "bun scripts/cleanup-containers.ts",
 		"docker:rebuild-workspaces": "bun scripts/rebuild-workspaces.ts",

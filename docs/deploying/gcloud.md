@@ -267,15 +267,23 @@ dashboards), see [Monitoring](../operating/monitoring.md).
 
 Releasing is two steps: publish a tag, then deploy it.
 
-**1. Publish** — push a semver tag on a commit reachable from `main`:
+**1. Publish** — pin the version into `docker-compose.yml`, commit, and push
+a semver tag on that commit (reachable from `main`):
 
 ```bash
-git tag v2.4.0 && git push origin v2.4.0
+bun run release:prepare v2.4.0
+git commit -am "release v2.4.0"
+git tag v2.4.0 && git push origin main v2.4.0
 ```
+
+The pin makes `git checkout v2.4.0 && docker compose up -d` (and Admin →
+Update on self-hosted servers) deploy exactly that release. The Release
+workflow refuses a tag whose compose file pins anything else.
 
 The **Release** workflow (`.github/workflows/release.yml`) runs automatically:
 
-1. Validates the tag format and that it is reachable from `main`
+1. Validates the tag format, that it is reachable from `main`, and that
+   `docker-compose.yml` at the tag pins the same version
 2. Runs `bun run verify` (Biome, typecheck, unit tests, E2E)
 3. Builds and pushes `ghcr.io/<owner>/coderunner-workspace:<tag>` and
    `ghcr.io/<owner>/coderunner-control:<tag>` (both `:latest` too) to GHCR as

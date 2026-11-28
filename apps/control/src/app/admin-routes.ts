@@ -10,6 +10,7 @@ import { getLogger } from "../logging";
 import type { RunManager } from "../runs";
 import type { WorkspaceRuntimeProvider } from "../runtime";
 import {
+	getRefDetails,
 	getServerUpdateStatus,
 	type ServerUpdateDeps,
 	ServerUpdateError,
@@ -487,7 +488,27 @@ export async function handleAdminRoute(
 
 	// --- Server self-update (decision 052) ---
 	if (url.pathname === "/admin/server-update" && request.method === "GET") {
-		return jsonResponse(await getServerUpdateStatus(ctx.serverUpdate));
+		return jsonResponse(
+			await getServerUpdateStatus(ctx.serverUpdate, {
+				refresh: url.searchParams.get("refresh") === "1",
+			}),
+		);
+	}
+
+	if (url.pathname === "/admin/server-update/ref" && request.method === "GET") {
+		try {
+			return jsonResponse(
+				await getRefDetails(ctx.serverUpdate, {
+					kind: url.searchParams.get("kind"),
+					ref: url.searchParams.get("ref"),
+				}),
+			);
+		} catch (error) {
+			if (error instanceof ServerUpdateError) {
+				return jsonResponse({ error: error.message }, { status: error.status });
+			}
+			return apiErrorResponse(error, "Couldn't load version details.");
+		}
 	}
 
 	if (url.pathname === "/admin/server-update" && request.method === "POST") {
@@ -498,7 +519,11 @@ export async function handleAdminRoute(
 			return jsonResponse({ error: "Invalid JSON body." }, { status: 400 });
 		}
 		try {
-			const result = await startServerUpdate(ctx.serverUpdate, body);
+			const result = await startServerUpdate(
+				ctx.serverUpdate,
+				body,
+				adminResult.user.email,
+			);
 			recordAuditEvent(storage, {
 				actor: auditActor(adminResult),
 				action: "server.update",

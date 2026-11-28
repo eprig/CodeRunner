@@ -154,56 +154,54 @@ step below.
 
 :::
 
-### Option A: Admin → Update (browser)
+The version your server runs is the git checkout it was started from:
+`docker-compose.yml` at a release tag pins that release's images, so nothing
+version-related needs to live in `.env`.
 
-If this deployment was started from a git checkout with `docker compose`, an
-admin can open **Admin → Update**, choose a published release tag or a branch
-from the repository shown on the page, and confirm. Tags pull the prebuilt
-images; branches fetch, check out, and build from the host checkout. The page
-shows the running commit, the selected ref's commit, the host checkout path,
-and, while an update runs, a spinner with the target commit, elapsed time, and
-current Docker build step (or its completed-step duration). A collapsible command
-log keeps the output of every helper command. Compose recreates the existing `control` and `workspace-template`
-containers, then the two replaced image tags are removed; student workspace
-containers roll lazily when they next reconnect. If no checkout is detected, set
-`CODERUNNER_UPDATE_REPO_DIR` in `.env`
-to the directory containing `docker-compose.yml`, then recreate the control
-container.
+### Option A: Admin → Update (recommended)
 
-The page needs network access to the GitHub API to list tags and branches;
-`GITHUB_TOKEN` in `.env` avoids anonymous rate limits. Updates finish with
-`docker compose up -d` from the host checkout, so the update helper's image
-must include the Docker Compose plugin. When upgrading from a release older
-than this feature, use the CLI flow once to install such an image; browser
-updates work from then on. The manual flow works without GitHub API access.
-See
-[decision 052](https://github.com/mathewdunne/CodeRunner/blob/main/docs/decisions/052-admin-server-updates.md)
-for details.
+Open **Admin → Update**. The page shows:
 
-### Option B: CLI
+- what is running now (release or branch build, commit title, author, and
+  date) and whether a newer release exists;
+- one searchable list of **Releases** and **Branches**, with the running and
+  latest versions labelled;
+- for the selected version: its release notes, the commits it adds (or, for a
+  downgrade, removes) compared with what's running, and the commit it deploys;
+- how many students are active right now, since an update interrupts them;
+- who ran the last update, when, how long it took, and whether it succeeded.
 
-#### 1. Choose the new version
+Choose a version and confirm. A release checks out its tag and pulls the
+prebuilt images; a branch checks out the branch and builds both images on the
+server (10+ minutes, CPU-heavy). Local edits in the checkout are discarded.
+Compose then recreates the `control` and `workspace-template` containers. If
+the new control container does not pass its healthcheck, the previous checkout
+and images are restored automatically. Student workspace containers move to the
+new image when each student next reconnects; project files are kept.
 
-Set `CODERUNNER_TAG` in `.env` to the new release tag, for example:
+The page lists versions through the GitHub API. **Check for updates** refreshes
+the list; `GITHUB_TOKEN` in `.env` is optional and only raises GitHub's
+anonymous rate limit. If no checkout is detected, set
+`CODERUNNER_UPDATE_REPO_DIR` in `.env` to the directory containing
+`docker-compose.yml` and recreate the control container. The first update to a
+release that includes this page must be done with Option B, which installs an
+image that has the updater. See
+[decision 052](https://github.com/mathewdunne/CodeRunner/blob/main/docs/decisions/052-admin-server-updates.md).
 
-```bash
-CODERUNNER_TAG=v2.5.0
-```
+### Option B: git
 
-If you intentionally track `latest`, leave the existing value unchanged.
-
-#### 2. Pull the new images and restart the control plane
+From the checkout, check out the release and restart on its images:
 
 ```bash
+git fetch --tags
+git checkout v2.5.0
 docker compose pull
 docker compose up -d
 ```
 
-`up -d` restarts the control plane on the new release. It then recreates each
-student's workspace container on the new workspace image the next time that
-student connects. No `rebuild-workspaces` step is needed.
-Student project files are bind-mounted and survive.
-#### 3. Verify the update
+`up -d` restarts the control plane on the new release. Each student's
+workspace container is recreated on the new workspace image the next time that
+student connects; no `rebuild-workspaces` step is needed. Verify with:
 
 ```bash
 curl http://localhost:4000/healthz
@@ -211,6 +209,22 @@ docker compose ps
 ```
 
 The health check should succeed and the control service should be `healthy`.
+
+Branch builds are meant for Option A. By hand they need Bun on the host:
+`git checkout -B dev origin/dev && git submodule update --init --recursive`,
+then `CODERUNNER_TAG=branch-dev bun run docker:build:control`, the same for
+`docker:build:workspace`, and `CODERUNNER_TAG=branch-dev docker compose up -d`.
+
+:::note[Legacy: `CODERUNNER_TAG` in `.env`]
+
+Older instructions pinned the version with `CODERUNNER_TAG=v2.5.0` in `.env`.
+That still works and overrides the checkout. Admin → Update keeps such a line
+current. To switch to checkout-based versions, delete the line and check out
+the release you run. Releases published before version pinning still pin
+`latest` in their compose file; for those, `CODERUNNER_TAG` remains the way to
+choose the version by hand.
+
+:::
 
 ## Routine restarts
 

@@ -27,6 +27,11 @@ services:
     # $HOSTNAME) is unaffected; the service name still resolves on the network
     # for Caddy.
     container_name: coderunner-control
+    # The CODERUNNER_TAG default is the version this checkout deploys: each
+    # release commit pins its own tag here (bun run release:prepare), so
+    # `git checkout <tag> && docker compose pull && docker compose up -d`
+    # updates the server. Setting CODERUNNER_TAG in .env still overrides it
+    # (legacy deployments, and GCE's render-env).
     image: ${CODERUNNER_IMAGE_NS:-ghcr.io/mathewdunne}/coderunner-control:${CODERUNNER_TAG:-latest}
     restart: unless-stopped
     # Run as the host owner of the data dir (keeps ./data host-owned, drops

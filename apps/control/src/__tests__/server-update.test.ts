@@ -6,6 +6,8 @@ import { loadControlConfig } from "../config";
 import type { DockerCommandResult, DockerRunner } from "../containers/types";
 import {
 	clearRefsCache,
+	composeEnv,
+	getRefDetails,
 	getServerUpdateStatus,
 	githubSlug,
 	imageNamespace,
@@ -13,6 +15,7 @@ import {
 	normalizeRepoUrl,
 	type ServerUpdateDeps,
 	ServerUpdateError,
+	sortTagsNewestFirst,
 	startServerUpdate,
 	UPDATE_JOB_FILE,
 } from "../server-update";
@@ -24,6 +27,48 @@ const ok = (stdout = ""): DockerCommandResult => ({
 });
 
 function githubFetch(url: string): Promise<Response> {
+	if (url.includes("/commits/")) {
+		const sha = decodeURIComponent(url.split("/commits/")[1] ?? "");
+		return Promise.resolve(
+			Response.json({
+				sha,
+				html_url: `https://github.com/eprig/CodeRunner/commit/${sha}`,
+				commit: {
+					message: `Commit ${sha.slice(0, 6)}\n\nLonger body`,
+					author: { name: "Octo Cat", date: "2026-11-20T00:00:00Z" },
+					committer: { date: "2026-11-21T00:00:00Z" },
+				},
+				author: { login: "octocat" },
+			}),
+		);
+	}
+	if (url.includes("/releases/tags/")) {
+		return url.endsWith("/v2.5.0")
+			? Promise.resolve(
+					Response.json({
+						name: "CodeRunner 2.5",
+						body: "## Changes\n- Faster builds",
+						published_at: "2026-11-25T00:00:00Z",
+						prerelease: false,
+						html_url: "https://github.com/eprig/CodeRunner/releases/tag/v2.5.0",
+					}),
+				)
+			: Promise.resolve(new Response("Not Found", { status: 404 }));
+	}
+	if (url.includes("/compare/")) {
+		return Promise.resolve(
+			Response.json({
+				status: "ahead",
+				ahead_by: 2,
+				behind_by: 0,
+				html_url: "https://github.com/eprig/CodeRunner/compare/x...y",
+				commits: [
+					{ sha: "older1", commit: { message: "Older change" } },
+					{ sha: "newer2", commit: { message: "Newer change" } },
+				],
+			}),
+		);
+	}
 	const body = url.includes("/tags?")
 		? [
 				{
@@ -65,6 +110,8 @@ async function deps(
 		labels?: Record<string, string>;
 		image?: string;
 		failRun?: boolean;
+		/** Pretend every `coderunner-updater-*` helper container is gone. */
+		helperGone?: boolean;
 		demo?: boolean;
 		updateMetadataSource?: "container" | "local";
 	} = {},
@@ -93,6 +140,13 @@ async function deps(
 	const runner: DockerRunner = async (args) => {
 		calls.push([...args]);
 		if (args[0] === "container" && args[1] === "inspect") {
+			if (options.helperGone && args[2]?.startsWith("coderunner-updater-")) {
+				return {
+					stdout: "[]",
+					stderr: "Error: No such container",
+					exitCode: 1,
+				};
+			}
 			if (options.updateMetadataSource === "local") {
 				return { stdout: "", stderr: "Error: No such object", exitCode: 1 };
 			}
@@ -476,13 +530,13 @@ describe("startServerUpdate", () => {
 				"ghcr.io/eprig/coderunner-control:branch-feature-my-branch",
 			);
 			const run = calls.find((call) => call[0] === "run");
+			expect(run).toContain("CODERUNNER_UPDATE_TAG=branch-feature-my-branch");
+			// Image names come from the checked-out compose files, not from here.
 			expect(
-				run?.some(
-					(arg) =>
-						arg ===
-						"CODERUNNER_UPDATE_WORKSPACE_IMAGE=ghcr.io/eprig/coderunner-workspace:branch-feature-my-branch",
+				run?.some((arg) =>
+					arg.startsWith("CODERUNNER_UPDATE_WORKSPACE_IMAGE="),
 				),
-			).toBe(true);
+			).toBe(false);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -500,6 +554,262 @@ describe("startServerUpdate", () => {
 			) as { state: string; message: string };
 			expect(job.state).toBe("failed");
 			expect(job.message).toContain("permission denied");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("updater safety", () => {
+	const activeJob = (startedAt: string) => ({
+		id: "job12345",
+		kind: "tag",
+		ref: "v2.5.0",
+		commit: null,
+		state: "running",
+		startedAt,
+		finishedAt: null,
+		message: "Pulling images for v2.5.0",
+		steps: [
+			{ label: "Prepare checkout", state: "done", detail: null },
+			{ label: "Build or pull images", state: "running", detail: null },
+		],
+		log: [],
+		image: null,
+	});
+
+	test("sorts release tags newest first, prereleases below their release", () => {
+		expect(
+			sortTagsNewestFirst([
+				"v2.4.0",
+				"v2.10.0",
+				"nightly",
+				"v2.10.0-rc.2",
+				"v2.9.1",
+				"v2.10.0-rc.10",
+			]),
+		).toEqual([
+			"v2.10.0",
+			"v2.10.0-rc.10",
+			"v2.10.0-rc.2",
+			"v2.9.1",
+			"v2.4.0",
+			"nightly",
+		]);
+	});
+
+	test("hands the helper the control container's own compose project and files", () => {
+		expect(
+			composeEnv({
+				"com.docker.compose.project": "coderunner",
+				"com.docker.compose.project.config_files":
+					"/srv/coderunner/docker-compose.yml,/srv/coderunner/docker-compose.prod.yml",
+				"com.docker.compose.service": "control",
+			}),
+		).toEqual([
+			["COMPOSE_PROJECT_NAME", "coderunner"],
+			[
+				"COMPOSE_FILE",
+				"/srv/coderunner/docker-compose.yml,/srv/coderunner/docker-compose.prod.yml",
+			],
+			["COMPOSE_PATH_SEPARATOR", ","],
+			["CODERUNNER_UPDATE_SERVICE", "control"],
+		]);
+	});
+
+	test("starts the helper with the SELinux exemption and the images it replaces", async () => {
+		clearRefsCache();
+		const { context, root, calls } = await deps();
+		try {
+			await startServerUpdate(context, { kind: "tag", ref: "v2.5.0" });
+			const run = calls.find((call) => call[0] === "run");
+			expect(run?.join(" ")).toContain("--security-opt label=disable");
+			expect(run).toContain(
+				"CODERUNNER_UPDATE_PREVIOUS_IMAGE=ghcr.io/eprig/coderunner-control:v2.4.0",
+			);
+			expect(
+				run?.some((arg) =>
+					arg.startsWith("CODERUNNER_UPDATE_PREVIOUS_WORKSPACE_IMAGE="),
+				),
+			).toBe(true);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("refuses to start a second update while one is running", async () => {
+		clearRefsCache();
+		const { context, root, calls } = await deps();
+		try {
+			await writeFile(
+				join(root, "data", UPDATE_JOB_FILE),
+				JSON.stringify(activeJob("2026-11-26T11:55:00.000Z")),
+			);
+			const error = await startServerUpdate(context, {
+				kind: "tag",
+				ref: "v2.5.0",
+			}).catch((err: unknown) => err);
+			expect(error).toBeInstanceOf(ServerUpdateError);
+			expect((error as ServerUpdateError).status).toBe(409);
+			expect(calls.some((call) => call[0] === "run")).toBe(false);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("fails a job whose helper container disappeared, unlocking the tab", async () => {
+		clearRefsCache();
+		const { context, root } = await deps({ helperGone: true });
+		try {
+			await writeFile(
+				join(root, "data", UPDATE_JOB_FILE),
+				JSON.stringify(activeJob("2026-11-26T11:55:00.000Z")),
+			);
+			const status = await getServerUpdateStatus(context);
+			expect(status.job.state).toBe("failed");
+			expect(status.restartExpected).toBe(false);
+			expect(status.job.message).toContain("stopped without reporting");
+			const persisted = JSON.parse(
+				await readFile(join(root, "data", UPDATE_JOB_FILE), "utf8"),
+			) as { state: string };
+			expect(persisted.state).toBe("failed");
+			// And a new update can start.
+			await startServerUpdate(context, { kind: "tag", ref: "v2.5.0" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("gives a just-started job time for its helper to appear", async () => {
+		clearRefsCache();
+		const { context, root } = await deps({ helperGone: true });
+		try {
+			await writeFile(
+				join(root, "data", UPDATE_JOB_FILE),
+				JSON.stringify(activeJob("2026-11-26T11:59:50.000Z")),
+			);
+			const status = await getServerUpdateStatus(context);
+			expect(status.job.state).toBe("running");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("update details for the admin page", () => {
+	test("reports the running commit's title and whether .env pins the version", async () => {
+		clearRefsCache();
+		const previous = Bun.env.CODERUNNER_TAG;
+		Bun.env.CODERUNNER_TAG = "v2.4.0";
+		const { context, root } = await deps();
+		try {
+			const status = await getServerUpdateStatus({
+				...context,
+				activity: () => ({ activeWorkspaces: 2, activeBuilds: 1 }),
+			});
+			expect(status.repo.versionPinnedInEnv).toBe(true);
+			expect(status.repo.commitInfo).toMatchObject({
+				sha: "abc123def",
+				title: "Commit abc123",
+				author: "octocat",
+				date: "2026-11-21T00:00:00Z",
+			});
+			expect(status.activity).toEqual({ activeWorkspaces: 2, activeBuilds: 1 });
+		} finally {
+			if (previous === undefined) delete Bun.env.CODERUNNER_TAG;
+			else Bun.env.CODERUNNER_TAG = previous;
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("describes a release: notes, commit, and what is new since the running commit", async () => {
+		clearRefsCache();
+		const { context, root } = await deps();
+		try {
+			const result = await getRefDetails(context, {
+				kind: "tag",
+				ref: "v2.5.0",
+			});
+			expect(result.release).toMatchObject({
+				name: "CodeRunner 2.5",
+				notes: "## Changes\n- Faster builds",
+				prerelease: false,
+			});
+			expect(result.commit?.sha).toBe(
+				"tagcommit0000000000000000000000000000001",
+			);
+			expect(result.compare).toMatchObject({ status: "ahead", aheadBy: 2 });
+			// Newest first.
+			expect(result.compare?.commits.map((c) => c.title)).toEqual([
+				"Newer change",
+				"Older change",
+			]);
+			expect(result.error).toBeNull();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("treats a tag without a GitHub release as having no notes", async () => {
+		clearRefsCache();
+		const { context, root } = await deps();
+		try {
+			const result = await getRefDetails(context, {
+				kind: "tag",
+				ref: "v2.4.0",
+			});
+			expect(result.release).toBeNull();
+			expect(result.error).toBeNull();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("turns an exhausted rate limit into advice to set GITHUB_TOKEN", async () => {
+		clearRefsCache();
+		const limited = () =>
+			Promise.resolve(
+				new Response("rate limited", {
+					status: 403,
+					headers: {
+						"x-ratelimit-remaining": "0",
+						"x-ratelimit-reset": "1800000000",
+					},
+				}),
+			);
+		const result = await listRemoteRefs(
+			"https://github.com/eprig/CodeRunner",
+			limited,
+		);
+		expect(result.error).toContain("rate limit");
+		expect(result.error).toContain("GITHUB_TOKEN");
+	});
+
+	test("caches ref lists per repository instead of across repositories", async () => {
+		clearRefsCache();
+		let calls = 0;
+		const counting = (url: string) => {
+			calls += 1;
+			return githubFetch(url);
+		};
+		await listRemoteRefs("https://github.com/eprig/CodeRunner", counting);
+		await listRemoteRefs("https://github.com/eprig/CodeRunner", counting);
+		expect(calls).toBe(2);
+		await listRemoteRefs("https://github.com/someone/Fork", counting);
+		expect(calls).toBe(4);
+	});
+
+	test("records who started an update", async () => {
+		clearRefsCache();
+		const { context, root } = await deps();
+		try {
+			await startServerUpdate(
+				context,
+				{ kind: "tag", ref: "v2.5.0" },
+				"admin@example.com",
+			);
+			const status = await getServerUpdateStatus(context);
+			expect(status.job.requestedBy).toBe("admin@example.com");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
